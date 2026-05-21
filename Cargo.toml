@@ -1,0 +1,50 @@
+[package]
+name = "ecobee-exporter"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+description = "Prometheus exporter for ecobee thermostats, sourced from the Beehive mobile-app GraphQL API"
+license = "Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/klaus/ecobee-exporter"
+keywords = ["ecobee", "prometheus", "exporter", "metrics", "thermostat"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+anyhow = "1.0.102"
+async-trait = "0.1.89"
+axum = "0.8.9"
+clap = { version = "4.6.1", features = ["derive", "env"] }
+figment = { version = "0.10.19", features = ["env", "toml"] }
+humantime-serde = "1.1.1"
+prometheus = "0.14.0"
+reqwest = { version = "0.13.3", default-features = false, features = ["json", "rustls", "gzip"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+thiserror = "2.0.18"
+tokio = { version = "1.52.3", features = ["full"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
+
+[dev-dependencies]
+tower = { version = "0.5.3", features = ["util"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+doc_markdown = "allow"
+# Several Beehive client methods are async stubs that will await once the
+# protocol is captured. Keeping them async keeps the trait stable.
+unused_async = "allow"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

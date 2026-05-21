@@ -1,0 +1,22 @@
+/target
+**/*.rs.bk
+Cargo.lock.bak
+
+# Local config & secrets — never commit
+ecobee-exporter.toml
+.env
+*.local.toml
+
+# Captured mobile-app traffic samples may contain tokens, refresh tokens,
+# or PII. Track only the curated, sanitized fixtures we explicitly commit.
+/samples/*.json
+/samples/*.flow
+/samples/*.har
+!/samples/example-*.json
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store

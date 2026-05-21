@@ -1,0 +1,40 @@
+# ecobee-exporter sample configuration. Copy to `ecobee-exporter.toml`
+# and edit. The runtime config file is gitignored so secrets don't leak.
+
+listen_addr = "0.0.0.0:9098"
+
+# Floored to 60s at startup. Don't go lower than the default; ecobee
+# only updates upstream data every ~3 minutes anyway, so faster polling
+# just burns API quota.
+poll_interval = "3m"
+
+state_file = "./ecobee-exporter.state.json"
+
+# Set to true to skip Beehive entirely and serve canned data — useful
+# for building dashboards and Prometheus configs before you've finished
+# the mitmproxy capture work.
+demo = false
+
+[beehive]
+# From your capture (see CAPTURE.md). Likely something like
+# "https://beehive.ecobee.com/graphql" but you must confirm from
+# captured traffic.
+# endpoint = "https://beehive.ecobee.com/graphql"
+
+# Pretend to be the mobile app. Match what your captured flows send.
+# user_agent = "ecobee/4.x.x (iOS; iPhone; …)"
+
+# extra_headers = [
+#   ["x-ecobee-app-version", "4.x.x"],
+# ]
+
+# Easiest path: paste a refresh token captured from your phone. The
+# exporter will exchange it for an access token on each startup and on
+# rotation.
+# refresh_token = "…"
+
+# Alternative path: have the exporter log in itself. Beehive likely
+# requires MFA, so this only works after you've implemented the
+# challenge flow in src/beehive/auth.rs.
+# email = "you@example.com"
+# password = "your password"
