@@ -7,12 +7,18 @@ ecobee-exporter.toml
 .env
 *.local.toml
 
-# Captured mobile-app traffic samples may contain tokens, refresh tokens,
-# or PII. Track only the curated, sanitized fixtures we explicitly commit.
+# Captured traffic — anywhere in the tree — almost always contains
+# tokens, cookies, or PII. Track only the curated, sanitized fixtures
+# we explicitly commit under samples/.
+*.flow
+*.har
+*.mitm
 /samples/*.json
-/samples/*.flow
-/samples/*.har
 !/samples/example-*.json
+
+# Persisted refresh + access tokens written by `ecobee-login`.
+ecobee-exporter.state.json
+*.state.json
 
 # Editor / IDE
 .idea/

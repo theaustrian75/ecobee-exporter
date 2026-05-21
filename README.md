@@ -36,13 +36,6 @@ people who do not have that option.
 
 ## Current status
 
-The scaffolding is in place and the metrics + HTTP layers work end-to-end
-in `--demo` mode. The Beehive client itself is a stub: as of mid-2026
-there is no public reverse-engineering of Beehive's endpoint URL,
-authentication flow, or GraphQL schema. Filling those in requires
-capturing your own mobile-app traffic; see [`CAPTURE.md`](./CAPTURE.md)
-for the procedure.
-
 What works today:
 
   - HTTP server on `/metrics` and `/healthz`.
@@ -51,15 +44,41 @@ What works today:
   - Polling loop with a configurable interval and a 60-second floor.
   - Configuration via TOML file, environment variables, and CLI flags.
   - `--demo` mode that serves canned data so dashboards and scrape
-    configs can be developed before the Beehive client is wired up.
+    configs can be developed before the upstream client is wired up.
+  - **Auth0 authentication** — the full Authorization Code + PKCE
+    bootstrap flow against the ecobee Auth0 tenant
+    (`auth.ecobee.com`), plus persistent refresh-token rotation. See
+    *Bootstrap* below.
 
-What's stubbed and waiting for capture:
+What's still stubbed:
 
-  - `src/beehive/auth.rs` — login + refresh flow.
-  - `src/beehive/queries.rs` — the GraphQL operation that lists
-    thermostats with their sensors, runtime, and settings.
+  - `src/beehive/queries.rs` — the actual data-fetching API call.
+    The endpoint may be `prod.ecobee.com/api/v1` (the JWT `audience`)
+    rather than literal `beehive.ecobee.com`; another capture against
+    the ecobee web app is required to confirm the shape. Tagged
+    `TODO(capture):` in source.
 
-Both are tagged `TODO(capture):` with notes on what to look for.
+## Bootstrap
+
+The mobile app uses Auth0 Universal Login with mandatory MFA. A
+long-running headless exporter can't do MFA on every restart, so we
+mint a refresh token once interactively and let the exporter reuse it.
+
+```sh
+cargo run --bin ecobee-login
+```
+
+This will print an Auth0 `/authorize` URL. Open it in your desktop
+browser, complete login + MFA, and when the browser lands on a page
+under `https://auth.ecobee.com/android/com.ecobee.athenamobile/callback?...`
+(which on desktop will appear blank or error — that's expected; the
+URL is an Android App Link with no desktop handler), copy the full
+URL out of the address bar and paste it back into the prompt. The
+helper exchanges the code at `/oauth/token` and writes the refresh
+token to `ecobee-exporter.state.json` with mode `0600`.
+
+After that, plain `cargo run --release` will pick up the refresh
+token automatically.
 
 ## Quick start
 
@@ -74,11 +93,12 @@ curl http://localhost:9098/metrics
 You should see a populated set of `ecobee_*` series against a synthetic
 two-sensor thermostat.
 
-### Real mode (after you've completed the capture work)
+### Real mode
 
 ```sh
+cargo run --bin ecobee-login          # one-time interactive PKCE bootstrap
 cp ecobee-exporter.example.toml ecobee-exporter.toml
-$EDITOR ecobee-exporter.toml   # fill in Beehive endpoint + refresh token
+$EDITOR ecobee-exporter.toml          # set beehive.endpoint once you've captured it
 cargo run --release
 ```
 
@@ -98,12 +118,10 @@ Layered, lowest-to-highest precedence:
 | `poll_interval`           | `3m`                             | Floored to 60s; ecobee data only updates every ~3 minutes anyway.     |
 | `state_file`              | `./ecobee-exporter.state.json`   | Where refresh tokens are persisted.                                   |
 | `demo`                    | `false`                          | Serve canned data; no upstream calls.                                 |
-| `beehive.endpoint`        | `null`                           | GraphQL URL from your capture.                                        |
+| `beehive.endpoint`        | `null`                           | Data API URL from your capture (likely `prod.ecobee.com/api/v1`).     |
 | `beehive.user_agent`      | `ecobee-exporter/0.1.0`          | Override to mimic the official mobile app if upstream rejects yours.  |
 | `beehive.extra_headers`   | `[]`                             | List of `[key, value]` pairs to add to every request.                 |
-| `beehive.email`           | `null`                           | Account email, for the initial login flow.                            |
-| `beehive.password`        | `null`                           | Account password, for the initial login flow.                         |
-| `beehive.refresh_token`   | `null`                           | Pre-minted refresh token, if you'd rather inject one from capture.    |
+| `beehive.refresh_token`   | `null`                           | Optional refresh-token seed; normally lives in `state_file` after `ecobee-login`. |
 
 Put secrets in the config file with `chmod 600`, not env vars. Env vars
 leak into systemd journals and `ps`.
@@ -166,11 +184,12 @@ exporter is unchanged.
 
 Short-term (unblocks "real" usage):
 
-  - Capture and implement Beehive auth (login + refresh).
-  - Capture and implement the `ListThermostats` query plus its mapping
-    into `model::Thermostat`.
+  - ~~Implement Auth0 + PKCE login + refresh.~~ Done.
+  - Capture the data API call from the ecobee web app
+    (`home.ecobee.com`) using mitmproxy in a desktop browser (no
+    cert pinning at play), and fill in `src/beehive/queries.rs`.
   - Add a saved fixture in `samples/example-list-thermostats.json` and
-    a parsing test in `tests/parse_sample.rs`.
+    a parsing test that round-trips through `translate()`.
 
 Medium-term (parity-plus):
 

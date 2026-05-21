@@ -55,7 +55,10 @@ async fn main() -> anyhow::Result<()> {
         );
         Arc::new(FakeProvider::demo())
     } else {
-        Arc::new(BeehiveProvider::new(&cfg.beehive).context("initializing Beehive provider")?)
+        Arc::new(
+            BeehiveProvider::new(&cfg.beehive, cfg.state_file.clone())
+                .context("initializing Beehive provider")?,
+        )
     };
 
     let collector = Collector::new(Arc::clone(&provider), Arc::clone(&metrics), cfg.poll_interval);

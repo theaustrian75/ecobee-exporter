@@ -66,17 +66,10 @@ pub struct BeehiveConfig {
     #[serde(default)]
     pub extra_headers: Vec<(String, String)>,
 
-    /// Ecobee account email. Only used the first time, to mint a refresh
-    /// token. After that, the refresh token in `state_file` is used.
-    #[serde(default)]
-    pub email: Option<String>,
-
-    /// Account password. Only used the first time, see above.
-    #[serde(default)]
-    pub password: Option<String>,
-
-    /// Pre-minted refresh token, if you'd rather inject one from a capture
-    /// than have the exporter perform the login flow itself.
+    /// Pre-minted refresh token. Normally this lives in the state file
+    /// (written by the `ecobee-login` helper). Setting it here forces a
+    /// re-seed on next startup and is mainly useful for testing or for
+    /// transplanting a token between machines.
     #[serde(default)]
     pub refresh_token: Option<String>,
 }

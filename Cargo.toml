@@ -14,17 +14,21 @@ categories = ["command-line-utilities"]
 anyhow = "1.0.102"
 async-trait = "0.1.89"
 axum = "0.8.9"
+base64 = "0.22.1"
 clap = { version = "4.6.1", features = ["derive", "env"] }
 figment = { version = "0.10.19", features = ["env", "toml"] }
 humantime-serde = "1.1.1"
 prometheus = "0.14.0"
-reqwest = { version = "0.13.3", default-features = false, features = ["json", "rustls", "gzip"] }
+rand = "0.10.1"
+reqwest = { version = "0.13.3", default-features = false, features = ["json", "rustls", "gzip", "form"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
+sha2 = "0.11.0"
 thiserror = "2.0.18"
 tokio = { version = "1.52.3", features = ["full"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
+url = "2.5.8"
 
 [dev-dependencies]
 tower = { version = "0.5.3", features = ["util"] }

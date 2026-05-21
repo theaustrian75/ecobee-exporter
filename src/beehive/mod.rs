@@ -16,7 +16,7 @@ pub mod auth;
 pub mod client;
 pub mod queries;
 
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use async_trait::async_trait;
 use tokio::sync::Mutex;
@@ -36,9 +36,9 @@ pub struct BeehiveProvider {
 }
 
 impl BeehiveProvider {
-    pub fn new(cfg: &BeehiveConfig) -> Result<Self, ProviderError> {
+    pub fn new(cfg: &BeehiveConfig, state_file: PathBuf) -> Result<Self, ProviderError> {
         let client = BeehiveClient::new(cfg)?;
-        let auth = Arc::new(Mutex::new(AuthState::from_config(cfg)));
+        let auth = Arc::new(Mutex::new(AuthState::load(cfg, state_file)?));
         Ok(Self { client, auth })
     }
 }

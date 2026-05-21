@@ -28,13 +28,7 @@ demo = false
 #   ["x-ecobee-app-version", "4.x.x"],
 # ]
 
-# Easiest path: paste a refresh token captured from your phone. The
-# exporter will exchange it for an access token on each startup and on
-# rotation.
+# Normally not set: the refresh token lives in state_file after running
+# `cargo run --bin ecobee-login`. Set this here only to transplant a
+# refresh token between machines or to override what's on disk.
 # refresh_token = "…"
-
-# Alternative path: have the exporter log in itself. Beehive likely
-# requires MFA, so this only works after you've implemented the
-# challenge flow in src/beehive/auth.rs.
-# email = "you@example.com"
-# password = "your password"

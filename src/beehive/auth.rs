@@ -1,102 +1,89 @@
-//! Beehive authentication state.
+//! Token management for the Beehive client.
 //!
-//! # TODO(capture)
+//! Refreshes are real (against Auth0 `/oauth/token` with the captured
+//! `client_id`); the initial interactive login lives in the
+//! `ecobee-login` binary, not here, because it requires a human at a
+//! browser to handle Auth0's MFA prompt.
 //!
-//! The exact login + refresh flow is *not* publicly documented. The 2020
-//! ecobee co-op blog post mentions MFA, which suggests the mobile app does
-//! something like:
-//!
-//!   1. POST email/password to an auth endpoint, receive a session token
-//!      plus an MFA challenge.
-//!   2. POST the MFA code to a verify endpoint, receive an access token
-//!      and a refresh token.
-//!   3. Refresh: POST the refresh token to a refresh endpoint, receive a
-//!      new access token (and possibly a rotated refresh token).
-//!
-//! Common shapes that turn up in mobile-app GraphQL stacks are:
-//!   - AWS Cognito user pools (`InitiateAuth` / `RespondToAuthChallenge`)
-//!   - Auth0 ROPG (`/oauth/token` with `grant_type=password`)
-//!   - Custom OAuth-like REST on the same host as Beehive itself
-//!
-//! Capture a login + a refresh from your phone (see `CAPTURE.md`) to learn
-//! which one ecobee uses, then implement the matching flow here. Until
-//! that's done, this module supports the "I have a refresh token already,
-//! just use it" path by reading `beehive.refresh_token` from the config —
-//! that's enough to validate the rest of the pipeline if you can extract
-//! one manually.
+//! Bootstrap order, from the exporter's perspective:
+//!   1. User runs `ecobee-login` once. That writes a refresh token to
+//!      `state_file`.
+//!   2. The exporter starts, reads `state_file`, mints an access token
+//!      via `/oauth/token` (refresh-grant), then uses it against the
+//!      data API.
+//!   3. Access tokens get refreshed ~30s before expiry; refresh
+//!      tokens are rotated by Auth0 and persisted on every successful
+//!      refresh so the file stays usable across restarts.
 
-use std::time::{Duration, Instant};
+use std::{path::PathBuf, time::SystemTime};
 
-use crate::{config::BeehiveConfig, provider::ProviderError};
+use crate::{
+    auth0,
+    config::BeehiveConfig,
+    provider::ProviderError,
+    state::PersistedState,
+};
 
 use super::client::BeehiveClient;
 
-#[derive(Debug, Clone)]
 pub struct AuthState {
-    refresh_token: Option<String>,
-    access_token: Option<String>,
-    /// When the cached access token stops being usable. We refresh ~30s
-    /// before this to avoid races near the boundary.
-    access_expires_at: Option<Instant>,
-    email: Option<String>,
-    password: Option<String>,
+    state_file: PathBuf,
+    persisted: PersistedState,
 }
 
 impl AuthState {
-    pub fn from_config(cfg: &BeehiveConfig) -> Self {
-        Self {
-            refresh_token: cfg.refresh_token.clone(),
-            access_token: None,
-            access_expires_at: None,
-            email: cfg.email.clone(),
-            password: cfg.password.clone(),
+    pub fn load(cfg: &BeehiveConfig, state_file: PathBuf) -> Result<Self, ProviderError> {
+        let mut persisted = PersistedState::load(&state_file).map_err(|e| {
+            ProviderError::Auth(format!("loading {}: {e}", state_file.display()))
+        })?;
+        if let Some(rt) = cfg.refresh_token.clone()
+            && persisted.refresh_token.as_ref() != Some(&rt)
+        {
+            tracing::info!("seeding refresh token from config");
+            persisted.refresh_token = Some(rt);
+            persisted.access_token = None;
+            persisted.access_expires_at = None;
         }
+        Ok(Self { state_file, persisted })
     }
 
-    /// Return a usable bearer token, refreshing or logging in as needed.
+    /// Return a usable bearer token. Refreshes from Auth0 if the cached
+    /// one is missing or near expiry. Persists rotated refresh tokens
+    /// back to disk on each successful exchange.
     pub async fn access_token(&mut self, client: &BeehiveClient) -> Result<String, ProviderError> {
-        if let (Some(tok), Some(exp)) = (&self.access_token, self.access_expires_at)
-            && exp.saturating_duration_since(Instant::now()) > Duration::from_secs(30)
+        if let (Some(tok), Some(exp)) = (&self.persisted.access_token, self.persisted.access_expires_at)
+            && exp.saturating_sub(now_unix()) > 30
         {
             return Ok(tok.clone());
         }
 
-        if self.refresh_token.is_some() {
-            self.refresh(client).await
-        } else if self.email.is_some() && self.password.is_some() {
-            self.login(client).await
-        } else {
-            Err(ProviderError::Auth(
-                "no refresh_token and no email/password configured".into(),
-            ))
+        let rt = self.persisted.refresh_token.clone().ok_or_else(|| {
+            ProviderError::Auth(
+                "no refresh token on disk — run `ecobee-login` once to bootstrap".into(),
+            )
+        })?;
+
+        let tokens = auth0::refresh_token(client.http(), &rt)
+            .await
+            .map_err(|e| ProviderError::Auth(format!("Auth0 refresh failed: {e}")))?;
+
+        self.persisted.access_token = Some(tokens.access_token.clone());
+        self.persisted.access_expires_at = Some(now_unix().saturating_add(tokens.expires_in));
+        if let Some(new_rt) = tokens.refresh_token {
+            if Some(&new_rt) != self.persisted.refresh_token.as_ref() {
+                tracing::info!("refresh token rotated by Auth0");
+            }
+            self.persisted.refresh_token = Some(new_rt);
         }
+        if let Err(e) = self.persisted.save(&self.state_file) {
+            tracing::warn!(error = %e, "could not persist refreshed state");
+        }
+        Ok(tokens.access_token)
     }
+}
 
-    async fn refresh(&mut self, _client: &BeehiveClient) -> Result<String, ProviderError> {
-        // TODO(capture): replace this stub with a real call. From your
-        // mitmproxy flow, you need:
-        //   - the refresh endpoint URL (it may or may not be the same host
-        //     as Beehive itself)
-        //   - the request body shape (form-urlencoded? JSON?)
-        //   - the response body shape (look for `access_token`, `expires_in`,
-        //     possibly a rotated `refresh_token`)
-        //   - any required headers beyond what BeehiveClient adds
-        //
-        // Once filled in, populate `self.access_token`, `self.access_expires_at`,
-        // and (if rotated) `self.refresh_token`, then return the new token.
-        Err(ProviderError::NotImplemented(
-            "refresh-token flow not yet captured — see src/beehive/auth.rs",
-        ))
-    }
-
-    async fn login(&mut self, _client: &BeehiveClient) -> Result<String, ProviderError> {
-        // TODO(capture): same drill as refresh(), but for the initial
-        // username+password login. Watch for an MFA step — the co-op blog
-        // post explicitly mentions MFA features in Beehive, so this is
-        // likely a two-call sequence (initiate auth -> respond to
-        // challenge) rather than a single round-trip.
-        Err(ProviderError::NotImplemented(
-            "username/password login flow not yet captured — see src/beehive/auth.rs",
-        ))
-    }
+fn now_unix() -> i64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs().cast_signed())
 }

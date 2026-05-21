@@ -8,6 +8,7 @@
 //! See `README.md` for the ToS caveat and `CAPTURE.md` for how to bootstrap
 //! credentials by capturing your own mobile-app traffic.
 
+pub mod auth0;
 pub mod beehive;
 pub mod collector;
 pub mod config;
@@ -15,3 +16,4 @@ pub mod metrics;
 pub mod model;
 pub mod provider;
 pub mod server;
+pub mod state;
