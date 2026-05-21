@@ -47,6 +47,20 @@ async fn fake_provider_round_trip_renders_billykwooten_parity_metrics() {
         "ecobee_outdoor_temp_high",
         "ecobee_outdoor_temp_low",
         "ecobee_equipment_running",
+        "ecobee_actual_humidity",
+        "ecobee_desired_humidity",
+        "ecobee_desired_dehumidity",
+        "ecobee_raw_temperature",
+        "ecobee_desired_fan_mode",
+        "ecobee_current_climate",
+        "ecobee_hold_active",
+        "ecobee_follow_me_comfort",
+        "ecobee_smart_circulation",
+        "ecobee_heat_stages",
+        "ecobee_cool_stages",
+        "ecobee_equipment_runtime_seconds",
+        "ecobee_demand_management_offset",
+        "ecobee_alert_active",
     ] {
         assert!(
             rendered.contains(needle),
@@ -66,6 +80,23 @@ async fn fake_provider_round_trip_renders_billykwooten_parity_metrics() {
     assert!(
         !rendered.contains("ecobee_outdoor_wind_gust_mph{"),
         "wind gust should be suppressed when not reported"
+    );
+
+    assert!(
+        rendered.contains("current_climate=\"home\""),
+        "expected current_climate=\"home\" in demo output"
+    );
+    assert!(
+        rendered.contains("equipment=\"cool1\",interval=\"2\"") && rendered.contains("} 300"),
+        "expected cool1 interval 2 runtime=300 in demo output"
+    );
+    assert!(
+        rendered.contains("alert_type=\"maintenance\"") && rendered.contains("alert_number=\"3140\""),
+        "expected demo alert series"
+    );
+    assert!(
+        rendered.contains("ecobee_hold_active{") && rendered.contains("} 0"),
+        "demo hold should be inactive"
     );
 
     // Demo data has actual_temperature = 721 tenths-of-a-degree => 72.1

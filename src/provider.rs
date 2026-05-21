@@ -42,7 +42,8 @@ impl FakeProvider {
     /// A representative two-sensor snapshot useful for smoke tests and demos.
     pub fn demo() -> Self {
         use crate::model::{
-            HvacMode, RemoteSensor, Runtime, SensorCapability, Settings, Thermostat, Weather,
+            Alert, EquipmentRuntime, ExtendedRuntime, HvacMode, Program, RemoteSensor, Runtime,
+            SensorCapability, Settings, Thermostat, Weather,
         };
         let demo = Thermostat {
             identifier: "411111111111".into(),
@@ -53,8 +54,18 @@ impl FakeProvider {
                 desired_heat: 680,
                 desired_cool: 760,
                 actual_humidity: Some(43),
+                desired_humidity: Some(36),
+                desired_dehumidity: Some(60),
+                raw_temperature: Some(719),
+                desired_fan_mode: Some("auto".into()),
             },
-            settings: Settings { hvac_mode: HvacMode::Auto },
+            settings: Settings {
+                hvac_mode: HvacMode::Auto,
+                follow_me_comfort: true,
+                smart_circulation: false,
+                heat_stages: Some(1),
+                cool_stages: Some(1),
+            },
             sensors: vec![
                 RemoteSensor {
                     id: "ei:0".into(),
@@ -95,6 +106,31 @@ impl FakeProvider {
                 sky: Some(5),
             }),
             equipment_running: vec!["fan".into(), "compCool1".into()],
+            program: Some(Program {
+                current_climate_ref: Some("home".into()),
+            }),
+            hold: None,
+            extended_runtime: Some(ExtendedRuntime {
+                equipment: vec![
+                    EquipmentRuntime {
+                        name: "cool1".into(),
+                        seconds: [0, 120, 300],
+                    },
+                    EquipmentRuntime {
+                        name: "fan".into(),
+                        seconds: [0, 120, 300],
+                    },
+                ],
+                dm_offset: [Some(-3), Some(-2), Some(0)],
+                current_electricity_bill: None,
+                projected_electricity_bill: None,
+            }),
+            alerts: vec![Alert {
+                alert_type: "maintenance".into(),
+                alert_number: Some(3140),
+                severity: "reminder".into(),
+                text: "HVAC maintenance reminder".into(),
+            }],
         };
         Self::new(vec![demo])
     }

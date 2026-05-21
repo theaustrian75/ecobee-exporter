@@ -143,6 +143,17 @@ description column.
 | `ecobee_humidity`                 | `thermostat_id`, `thermostat_name`, `sensor_id`, `sensor_name`, `sensor_type` | Per-sensor humidity, percent.                                                 |
 | `ecobee_occupancy`                | `thermostat_id`, `thermostat_name`, `sensor_id`, `sensor_name`, `sensor_type` | Per-sensor occupancy (0 or 1).                                                |
 | `ecobee_in_use`                   | `thermostat_id`, `thermostat_name`, `sensor_id`, `sensor_name`, `sensor_type` | Whether the sensor is being included in thermostat averages (0 or 1).         |
+| `ecobee_actual_humidity`          | `thermostat_id`, `thermostat_name`                                  | Thermostat-averaged relative humidity, percent. *(extension)*                          |
+| `ecobee_desired_humidity`         | `thermostat_id`, `thermostat_name`                                  | Humidifier setpoint, percent. *(extension)*                                            |
+| `ecobee_desired_dehumidity`       | `thermostat_id`, `thermostat_name`                                  | Dehumidifier setpoint, percent. *(extension)*                                          |
+| `ecobee_raw_temperature`          | `thermostat_id`, `thermostat_name`                                  | Dry-bulb temperature at the thermostat, degrees. *(extension)*                       |
+| `ecobee_desired_fan_mode`         | `thermostat_id`, `thermostat_name`, `desired_fan_mode`              | Always `0`; fan mode encoded as a label (`auto`, `on`). *(extension)*                  |
+| `ecobee_current_climate`          | `thermostat_id`, `thermostat_name`, `current_climate`               | Always `0`; active schedule climate encoded as a label (`home`, `sleep`, …). *(extension)* |
+| `ecobee_hold_active`              | `thermostat_id`, `thermostat_name`                                  | 1 if a hold/vacation/DR event is running. *(extension)*                                |
+| `ecobee_follow_me_comfort`        | `thermostat_id`, `thermostat_name`                                  | 1 if follow-me comfort is enabled. *(extension)*                                       |
+| `ecobee_smart_circulation`        | `thermostat_id`, `thermostat_name`                                  | 1 if smart circulation is enabled. *(extension)*                                       |
+| `ecobee_heat_stages`              | `thermostat_id`, `thermostat_name`                                  | Number of configured heating stages. *(extension)*                                       |
+| `ecobee_cool_stages`              | `thermostat_id`, `thermostat_name`                                  | Number of configured cooling stages. *(extension)*                                       |
 
 ### Outdoor weather *(extension)*
 
@@ -177,6 +188,35 @@ extra series.
 | Metric                       | Labels                                                | Description                                       |
 |------------------------------|-------------------------------------------------------|---------------------------------------------------|
 | `ecobee_equipment_running`   | `thermostat_id`, `thermostat_name`, `equipment`       | 1 if that equipment is currently running, else 0. |
+
+### Hold / events *(extension)*
+
+Emitted when a hold, vacation, or demand-response event is actively running.
+
+| Metric                       | Labels                                                | Description                                       |
+|------------------------------|-------------------------------------------------------|---------------------------------------------------|
+| `ecobee_hold_heat_temp`      | `thermostat_id`, `thermostat_name`                    | Heat hold setpoint, degrees.                      |
+| `ecobee_hold_cool_temp`      | `thermostat_id`, `thermostat_name`                    | Cool hold setpoint, degrees.                      |
+| `ecobee_event_type`          | `thermostat_id`, `thermostat_name`, `event_type`      | Always `0`; event type encoded as a label.        |
+
+### Extended runtime *(extension)*
+
+Per-equipment runtime from the last three 5-minute intervals (interval `0` = oldest, `2` = newest). Values are seconds of runtime within each 5-minute bucket (0–300).
+
+| Metric                              | Labels                                                       | Description                                       |
+|-------------------------------------|--------------------------------------------------------------|---------------------------------------------------|
+| `ecobee_equipment_runtime_seconds`  | `thermostat_id`, `thermostat_name`, `equipment`, `interval`  | Equipment runtime in seconds per 5-minute bucket. |
+| `ecobee_demand_management_offset`   | `thermostat_id`, `thermostat_name`, `interval`               | Demand-management temperature offset, degrees.    |
+| `ecobee_current_electricity_bill`   | `thermostat_id`, `thermostat_name`                         | Current bill from a paired utility meter (if any). |
+| `ecobee_projected_electricity_bill` | `thermostat_id`, `thermostat_name`                         | Projected bill from a paired utility meter (if any). |
+
+Equipment names match the extended-runtime API fields: `heatPump1`, `heatPump2`, `auxHeat1`, `auxHeat2`, `auxHeat3`, `cool1`, `cool2`, `fan`, `humidifier`, `dehumidifier`, `ventilator`, `economizer`.
+
+### Alerts *(extension)*
+
+| Metric                | Labels                                                              | Description                              |
+|-----------------------|---------------------------------------------------------------------|------------------------------------------|
+| `ecobee_alert_active` | `thermostat_id`, `thermostat_name`, `alert_type`, `alert_number`    | 1 for each active alert on the thermostat. |
 
 ## Architecture
 
@@ -226,11 +266,10 @@ Medium-term (parity-plus):
 
   - ~~`ecobee_equipment_running{equipment}`.~~ Done.
   - ~~Outdoor weather metrics from the weather block.~~ Done.
-  - Per-equipment runtime minutes from the `extendedRuntime` block
-    (heat-pump, aux, cool, fan, humidifier, dehumidifier, ventilator
-    minute counters).
-  - Air-quality metrics on Premium models (`co2`, `vocPpb`,
-    `airQualityAccuracy`).
+  - ~~Tier-1 runtime/settings/program metrics (humidity setpoints, fan mode, climate, hold state).~~ Done.
+  - ~~Extended runtime seconds + demand-management offsets.~~ Done.
+  - ~~Active alerts.~~ Done.
+  - Air-quality metrics on Premium models (`co2`, `vocPpb`, `airQualityAccuracy`).
 
 Long-term (operational polish):
 

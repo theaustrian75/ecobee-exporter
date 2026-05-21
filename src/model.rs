@@ -32,6 +32,18 @@ pub struct Thermostat {
     /// Comes from the upstream `equipmentStatus` CSV; empty means idle.
     #[serde(default)]
     pub equipment_running: Vec<String>,
+    /// Active schedule slot, if program data was included.
+    #[serde(default)]
+    pub program: Option<Program>,
+    /// The currently running hold/vacation/DR event, if any.
+    #[serde(default)]
+    pub hold: Option<HoldEvent>,
+    /// Last three 5-minute equipment runtime buckets, if requested.
+    #[serde(default)]
+    pub extended_runtime: Option<ExtendedRuntime>,
+    /// Active thermostat alerts requiring user attention.
+    #[serde(default)]
+    pub alerts: Vec<Alert>,
 }
 
 /// Live runtime metrics for the thermostat itself (not the remote sensors).
@@ -45,12 +57,69 @@ pub struct Runtime {
     pub desired_heat: i32,
     pub desired_cool: i32,
     pub actual_humidity: Option<i32>,
+    pub desired_humidity: Option<i32>,
+    pub desired_dehumidity: Option<i32>,
+    /// Dry-bulb temperature; differs from `actual_temperature` when
+    /// "feels like" mode is enabled.
+    pub raw_temperature: Option<i32>,
+    /// `"auto"`, `"on"`, or absent when HVAC is off.
+    pub desired_fan_mode: Option<String>,
 }
 
 /// User-facing settings that affect what the thermostat is currently doing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     pub hvac_mode: HvacMode,
+    pub follow_me_comfort: bool,
+    pub smart_circulation: bool,
+    pub heat_stages: Option<i32>,
+    pub cool_stages: Option<i32>,
+}
+
+/// Active schedule program state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Program {
+    /// Reference to the active climate, e.g. `"home"`, `"sleep"`, `"away"`.
+    pub current_climate_ref: Option<String>,
+}
+
+/// A hold, vacation, or demand-response event.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HoldEvent {
+    pub running: bool,
+    pub event_type: String,
+    pub name: String,
+    pub heat_hold_temp: Option<i32>,
+    pub cool_hold_temp: Option<i32>,
+}
+
+/// Per-equipment runtime from the extended runtime block.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EquipmentRuntime {
+    /// API field name, e.g. `"cool1"`, `"fan"`, `"heatPump1"`.
+    pub name: String,
+    /// Seconds of runtime in each of the last three 5-minute intervals.
+    /// Index 0 = oldest, index 2 = newest.
+    pub seconds: [i32; 3],
+}
+
+/// Extended runtime telemetry: 5-minute equipment buckets and utility data.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtendedRuntime {
+    pub equipment: Vec<EquipmentRuntime>,
+    /// Demand-management temperature offsets in tenths of a degree.
+    pub dm_offset: [Option<i32>; 3],
+    pub current_electricity_bill: Option<i32>,
+    pub projected_electricity_bill: Option<i32>,
+}
+
+/// An active alert on the thermostat.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Alert {
+    pub alert_type: String,
+    pub alert_number: Option<i32>,
+    pub severity: String,
+    pub text: String,
 }
 
 /// Subset of HVAC modes ecobee supports. Anything else falls through to
