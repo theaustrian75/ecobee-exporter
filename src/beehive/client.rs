@@ -1,45 +1,27 @@
-//! Thin reqwest wrapper that posts GraphQL operations and parses the
-//! standard `{ "data": ..., "errors": ... }` envelope.
+//! Thin reqwest wrapper used by the data-API queries.
 //!
-//! The Beehive endpoint URL, expected User-Agent, and any required custom
-//! headers are all configurable — they're things you'll learn from your own
-//! mitmproxy capture rather than from any public docs.
+//! Holds the configured `reqwest::Client` (user-agent, extra headers,
+//! gzip) and the base URL for the upstream API. The query module on top
+//! does the actual REST shaping.
 
 use reqwest::{Client, header::HeaderMap};
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use crate::{config::BeehiveConfig, provider::ProviderError};
 
-/// Standard GraphQL request body.
-#[derive(Debug, Serialize)]
-pub struct GraphQlRequest<'a, V: Serialize> {
-    pub query: &'a str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub operation_name: Option<&'a str>,
-    pub variables: V,
-}
-
-/// Standard GraphQL response envelope.
-#[derive(Debug, Deserialize)]
-pub struct GraphQlResponse<T> {
-    pub data: Option<T>,
-    #[serde(default)]
-    pub errors: Vec<GraphQlError>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct GraphQlError {
-    pub message: String,
-    #[serde(default)]
-    pub path: Option<Vec<Value>>,
-    #[serde(default)]
-    pub extensions: Option<Value>,
-}
+/// Default base URL for ecobee's data API.
+///
+/// The Auth0 JWT we mint has `aud=https://prod.ecobee.com/api/v1`, but
+/// that's just a logical identifier — `prod.ecobee.com` does not
+/// resolve publicly. The API is actually served from
+/// `https://api.ecobee.com/1/...`, which is the host the long-documented
+/// developer REST API has always used. Our Auth0 access token is
+/// accepted there with `Authorization: Bearer …` exactly like the old
+/// developer tokens were.
+pub const DEFAULT_BASE_URL: &str = "https://api.ecobee.com/1";
 
 pub struct BeehiveClient {
     http: Client,
-    endpoint: Option<String>,
+    base_url: String,
 }
 
 impl BeehiveClient {
@@ -66,47 +48,20 @@ impl BeehiveClient {
             .gzip(true)
             .build()?;
 
-        Ok(Self { http, endpoint: cfg.endpoint.clone() })
+        let base_url = cfg
+            .endpoint
+            .clone()
+            .unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
+        let base_url = base_url.trim_end_matches('/').to_string();
+
+        Ok(Self { http, base_url })
     }
 
     pub fn http(&self) -> &Client {
         &self.http
     }
 
-    /// Post a GraphQL operation with a bearer token. The response is
-    /// returned with the standard envelope so callers can decide how to
-    /// handle partial `data` + `errors`.
-    pub async fn post<V, T>(
-        &self,
-        bearer: &str,
-        operation_name: Option<&str>,
-        query: &str,
-        variables: V,
-    ) -> Result<GraphQlResponse<T>, ProviderError>
-    where
-        V: Serialize,
-        T: for<'de> Deserialize<'de>,
-    {
-        let endpoint = self.endpoint.as_deref().ok_or_else(|| {
-            ProviderError::Auth(
-                "beehive.endpoint not configured — capture the URL from your mobile app first"
-                    .into(),
-            )
-        })?;
-
-        let body = GraphQlRequest { query, operation_name, variables };
-
-        let resp = self
-            .http
-            .post(endpoint)
-            .bearer_auth(bearer)
-            .json(&body)
-            .send()
-            .await?
-            .error_for_status()?
-            .json::<GraphQlResponse<T>>()
-            .await?;
-
-        Ok(resp)
+    pub fn base_url(&self) -> &str {
+        &self.base_url
     }
 }

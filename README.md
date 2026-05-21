@@ -36,27 +36,18 @@ people who do not have that option.
 
 ## Current status
 
-What works today:
+End-to-end functional. Fetches real thermostat + sensor + runtime data
+from `api.ecobee.com/1/thermostat` using an Auth0-issued JWT bearer
+token, and renders the documented [billykwooten/ecobee-exporter][bk]
+metric set.
 
   - HTTP server on `/metrics` and `/healthz`.
-  - Prometheus metric layer with the full
-    [billykwooten/ecobee-exporter][bk] metric set (see *Metrics* below).
+  - Auth0 + PKCE one-time login bootstrap (`cargo run --bin ecobee-login`),
+    persistent refresh-token rotation, mode-0600 state file.
   - Polling loop with a configurable interval and a 60-second floor.
   - Configuration via TOML file, environment variables, and CLI flags.
   - `--demo` mode that serves canned data so dashboards and scrape
-    configs can be developed before the upstream client is wired up.
-  - **Auth0 authentication** — the full Authorization Code + PKCE
-    bootstrap flow against the ecobee Auth0 tenant
-    (`auth.ecobee.com`), plus persistent refresh-token rotation. See
-    *Bootstrap* below.
-
-What's still stubbed:
-
-  - `src/beehive/queries.rs` — the actual data-fetching API call.
-    The endpoint may be `prod.ecobee.com/api/v1` (the JWT `audience`)
-    rather than literal `beehive.ecobee.com`; another capture against
-    the ecobee web app is required to confirm the shape. Tagged
-    `TODO(capture):` in source.
+    configs can be developed without credentials.
 
 ## Bootstrap
 
@@ -97,10 +88,14 @@ two-sensor thermostat.
 
 ```sh
 cargo run --bin ecobee-login          # one-time interactive PKCE bootstrap
-cp ecobee-exporter.example.toml ecobee-exporter.toml
-$EDITOR ecobee-exporter.toml          # set beehive.endpoint once you've captured it
-cargo run --release
+cargo run --release                   # run the exporter
+curl http://localhost:9098/metrics
 ```
+
+A TOML config file is optional. The defaults — base URL
+`https://api.ecobee.com/1`, port `9098`, 3-minute poll cadence — are
+what you want for ordinary use. Copy `ecobee-exporter.example.toml`
+to `ecobee-exporter.toml` only if you need to override something.
 
 ## Configuration
 
@@ -118,7 +113,7 @@ Layered, lowest-to-highest precedence:
 | `poll_interval`           | `3m`                             | Floored to 60s; ecobee data only updates every ~3 minutes anyway.     |
 | `state_file`              | `./ecobee-exporter.state.json`   | Where refresh tokens are persisted.                                   |
 | `demo`                    | `false`                          | Serve canned data; no upstream calls.                                 |
-| `beehive.endpoint`        | `null`                           | Data API URL from your capture (likely `prod.ecobee.com/api/v1`).     |
+| `beehive.endpoint`        | `https://api.ecobee.com/1`       | Data API base URL. The default is the documented developer-API host. |
 | `beehive.user_agent`      | `ecobee-exporter/0.1.0`          | Override to mimic the official mobile app if upstream rejects yours.  |
 | `beehive.extra_headers`   | `[]`                             | List of `[key, value]` pairs to add to every request.                 |
 | `beehive.refresh_token`   | `null`                           | Optional refresh-token seed; normally lives in `state_file` after `ecobee-login`. |
@@ -182,14 +177,11 @@ exporter is unchanged.
 
 ## Roadmap
 
-Short-term (unblocks "real" usage):
+Short-term:
 
   - ~~Implement Auth0 + PKCE login + refresh.~~ Done.
-  - Capture the data API call from the ecobee web app
-    (`home.ecobee.com`) using mitmproxy in a desktop browser (no
-    cert pinning at play), and fill in `src/beehive/queries.rs`.
-  - Add a saved fixture in `samples/example-list-thermostats.json` and
-    a parsing test that round-trips through `translate()`.
+  - ~~Implement the data-API call against `api.ecobee.com/1/thermostat`.~~ Done.
+  - ~~Add a fixture-based parsing test for the response shape.~~ Done.
 
 Medium-term (parity-plus):
 

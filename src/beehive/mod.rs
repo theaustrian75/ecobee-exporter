@@ -50,16 +50,7 @@ impl ThermostatProvider for BeehiveProvider {
             let mut state = self.auth.lock().await;
             state.access_token(&self.client).await?
         };
-
-        // TODO(capture): once the GraphQL query for "list thermostats with
-        // sensors + runtime + settings" is known, call it here and translate
-        // the response into Vec<Thermostat>. The translation layer should be
-        // a free function in `queries::translate` so it's unit-testable
-        // against a captured JSON sample.
-        let _ = token;
-        let _ = &self.client;
-        Err(ProviderError::NotImplemented(
-            "Beehive query body unknown — see CAPTURE.md and src/beehive/queries.rs",
-        ))
+        let resp = queries::list_thermostats(&self.client, &token).await?;
+        Ok(queries::translate(&resp))
     }
 }

@@ -16,13 +16,13 @@ state_file = "./ecobee-exporter.state.json"
 demo = false
 
 [beehive]
-# From your capture (see CAPTURE.md). Likely something like
-# "https://beehive.ecobee.com/graphql" but you must confirm from
-# captured traffic.
-# endpoint = "https://beehive.ecobee.com/graphql"
+# Data API base URL. The default (api.ecobee.com/1) is what the
+# documented developer REST API has always used. Only override if
+# ecobee changes the URL prefix.
+# endpoint = "https://api.ecobee.com/1"
 
-# Pretend to be the mobile app. Match what your captured flows send.
-# user_agent = "ecobee/4.x.x (iOS; iPhone; …)"
+# Override the outgoing User-Agent. Default is `ecobee-exporter/<version>`.
+# user_agent = "ecobee/4.x.x"
 
 # extra_headers = [
 #   ["x-ecobee-app-version", "4.x.x"],
