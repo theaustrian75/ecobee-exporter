@@ -42,7 +42,7 @@ impl FakeProvider {
     /// A representative two-sensor snapshot useful for smoke tests and demos.
     pub fn demo() -> Self {
         use crate::model::{
-            HvacMode, RemoteSensor, Runtime, SensorCapability, Settings, Thermostat,
+            HvacMode, RemoteSensor, Runtime, SensorCapability, Settings, Thermostat, Weather,
         };
         let demo = Thermostat {
             identifier: "411111111111".into(),
@@ -78,6 +78,23 @@ impl FakeProvider {
                     ],
                 },
             ],
+            weather: Some(Weather {
+                station: "FI:KDEMO".into(),
+                condition: "Cloudy".into(),
+                temperature: Some(64.5),
+                humidity: Some(78),
+                pressure_mb: Some(1017),
+                dewpoint: Some(57.5),
+                wind_speed_mph: Some(4),
+                wind_gust_mph: None,
+                wind_bearing_degrees: Some(327),
+                visibility_meters: Some(24000),
+                probability_of_precipitation: Some(0),
+                temp_high: Some(64.5),
+                temp_low: Some(56.6),
+                sky: Some(5),
+            }),
+            equipment_running: vec!["fan".into(), "compCool1".into()],
         };
         Self::new(vec![demo])
     }

@@ -31,16 +31,42 @@ async fn fake_provider_round_trip_renders_billykwooten_parity_metrics() {
         "ecobee_target_temperature_min",
         "ecobee_target_temperature_max",
         "ecobee_currenthvacmode",
+        "ecobee_connected",
         "ecobee_temperature",
         "ecobee_humidity",
         "ecobee_occupancy",
         "ecobee_in_use",
+        "ecobee_outdoor_temperature",
+        "ecobee_outdoor_humidity",
+        "ecobee_outdoor_pressure_mb",
+        "ecobee_outdoor_dewpoint",
+        "ecobee_outdoor_wind_speed_mph",
+        "ecobee_outdoor_wind_bearing_degrees",
+        "ecobee_outdoor_visibility_meters",
+        "ecobee_outdoor_probability_of_precipitation",
+        "ecobee_outdoor_temp_high",
+        "ecobee_outdoor_temp_low",
+        "ecobee_equipment_running",
     ] {
         assert!(
             rendered.contains(needle),
             "missing metric `{needle}` in:\n{rendered}"
         );
     }
+
+    assert!(
+        rendered.contains("station=\"FI:KDEMO\""),
+        "weather station label missing"
+    );
+    assert!(
+        rendered.contains("equipment=\"fan\"") && rendered.contains("equipment=\"compCool1\""),
+        "expected fan + compCool1 equipment series"
+    );
+    // Demo windGust is None — series must NOT be emitted.
+    assert!(
+        !rendered.contains("ecobee_outdoor_wind_gust_mph{"),
+        "wind gust should be suppressed when not reported"
+    );
 
     // Demo data has actual_temperature = 721 tenths-of-a-degree => 72.1
     assert!(

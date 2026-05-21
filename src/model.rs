@@ -24,6 +24,14 @@ pub struct Thermostat {
     pub runtime: Runtime,
     pub settings: Settings,
     pub sensors: Vec<RemoteSensor>,
+    /// Current outdoor weather observation, if the thermostat reported one.
+    #[serde(default)]
+    pub weather: Option<Weather>,
+    /// Identifiers of equipment currently running (e.g. `"fan"`, `"compCool1"`).
+    ///
+    /// Comes from the upstream `equipmentStatus` CSV; empty means idle.
+    #[serde(default)]
+    pub equipment_running: Vec<String>,
 }
 
 /// Live runtime metrics for the thermostat itself (not the remote sensors).
@@ -82,6 +90,44 @@ pub struct RemoteSensor {
     /// averaged readings.
     pub in_use: bool,
     pub capabilities: Vec<SensorCapability>,
+}
+
+/// Current outdoor conditions reported by the thermostat's associated
+/// weather station, with units already normalized.
+///
+/// `None` on any individual field means ecobee returned its `-5002`
+/// "no data" sentinel; we filter those at translation time so callers
+/// don't need to.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Weather {
+    /// Weather station identifier ecobee used (e.g. `"FI:KCDW"`).
+    pub station: String,
+    /// Human-readable condition (e.g. `"Cloudy"`).
+    pub condition: String,
+    /// Outdoor temperature in degrees (Fahrenheit for US accounts).
+    pub temperature: Option<f64>,
+    /// Outdoor relative humidity, percent.
+    pub humidity: Option<i32>,
+    /// Sea-level pressure, millibars (equivalent to hectopascals).
+    pub pressure_mb: Option<i32>,
+    /// Outdoor dewpoint in degrees.
+    pub dewpoint: Option<f64>,
+    /// Wind speed in mph.
+    pub wind_speed_mph: Option<i32>,
+    /// Wind gust in mph.
+    pub wind_gust_mph: Option<i32>,
+    /// Wind bearing, compass degrees (0 = N, 90 = E).
+    pub wind_bearing_degrees: Option<i32>,
+    /// Visibility in meters.
+    pub visibility_meters: Option<i32>,
+    /// Probability of precipitation, percent.
+    pub probability_of_precipitation: Option<i32>,
+    /// Forecast daily high in degrees.
+    pub temp_high: Option<f64>,
+    /// Forecast daily low in degrees.
+    pub temp_low: Option<f64>,
+    /// Sky code (ecobee enum 0-9-ish; mostly redundant with `condition`).
+    pub sky: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -26,22 +26,39 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    model::{HvacMode, RemoteSensor, Runtime, SensorCapability, Settings, Thermostat},
+    model::{HvacMode, RemoteSensor, Runtime, SensorCapability, Settings, Thermostat, Weather},
     provider::ProviderError,
 };
 
 use super::client::BeehiveClient;
 
+/// Ecobee uses this value to mean "no reading available" in integer fields.
+const NO_DATA_SENTINEL: i32 = -5002;
+
+fn maybe(v: i32) -> Option<i32> {
+    if v == NO_DATA_SENTINEL { None } else { Some(v) }
+}
+
+fn maybe_tenths(v: i32) -> Option<f64> {
+    maybe(v).map(|n| f64::from(n) / 10.0)
+}
+
 /// The Selection object that filters which thermostats and which sub-blocks
 /// to include in the response. Mirrors the ecobee REST `Selection` type.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "mirrors ecobee's REST Selection contract one-for-one"
+)]
 pub struct Selection {
     pub selection_type: &'static str,
     pub selection_match: &'static str,
     pub include_runtime: bool,
     pub include_sensors: bool,
     pub include_settings: bool,
+    pub include_weather: bool,
+    pub include_equipment_status: bool,
 }
 
 impl Selection {
@@ -52,6 +69,8 @@ impl Selection {
             include_runtime: true,
             include_sensors: true,
             include_settings: true,
+            include_weather: true,
+            include_equipment_status: true,
         }
     }
 }
@@ -100,6 +119,56 @@ pub struct RawThermostat {
     pub settings: Option<RawSettings>,
     #[serde(default)]
     pub remote_sensors: Vec<RawRemoteSensor>,
+    #[serde(default)]
+    pub weather: Option<RawWeather>,
+    /// CSV of currently-running equipment, e.g. `"compCool1,fan"`. Empty
+    /// or absent when idle.
+    #[serde(default)]
+    pub equipment_status: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RawWeather {
+    #[serde(default)]
+    pub weather_station: String,
+    #[serde(default)]
+    pub forecasts: Vec<RawForecast>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RawForecast {
+    #[serde(default)]
+    pub condition: String,
+    #[serde(default = "no_data")]
+    pub temperature: i32,
+    #[serde(default = "no_data")]
+    pub pressure: i32,
+    #[serde(default = "no_data")]
+    pub relative_humidity: i32,
+    #[serde(default = "no_data")]
+    pub dewpoint: i32,
+    #[serde(default = "no_data")]
+    pub visibility: i32,
+    #[serde(default = "no_data")]
+    pub wind_speed: i32,
+    #[serde(default = "no_data")]
+    pub wind_gust: i32,
+    #[serde(default = "no_data")]
+    pub wind_bearing: i32,
+    #[serde(default = "no_data")]
+    pub pop: i32,
+    #[serde(default = "no_data")]
+    pub temp_high: i32,
+    #[serde(default = "no_data")]
+    pub temp_low: i32,
+    #[serde(default = "no_data")]
+    pub sky: i32,
+}
+
+fn no_data() -> i32 {
+    NO_DATA_SENTINEL
 }
 
 #[derive(Debug, Deserialize)]
@@ -224,6 +293,12 @@ pub fn translate(resp: &ThermostatListResponse) -> Vec<Thermostat> {
                         .collect(),
                 })
                 .collect();
+            let weather = t.weather.as_ref().and_then(translate_weather);
+            let equipment_running = t
+                .equipment_status
+                .as_deref()
+                .map(parse_equipment_csv)
+                .unwrap_or_default();
             Thermostat {
                 identifier: t.identifier.clone(),
                 name: t.name.clone(),
@@ -231,8 +306,38 @@ pub fn translate(resp: &ThermostatListResponse) -> Vec<Thermostat> {
                 runtime: runtime_model,
                 settings: Settings { hvac_mode },
                 sensors,
+                weather,
+                equipment_running,
             }
         })
+        .collect()
+}
+
+fn translate_weather(w: &RawWeather) -> Option<Weather> {
+    let current = w.forecasts.first()?;
+    Some(Weather {
+        station: w.weather_station.clone(),
+        condition: current.condition.clone(),
+        temperature: maybe_tenths(current.temperature),
+        humidity: maybe(current.relative_humidity),
+        pressure_mb: maybe(current.pressure),
+        dewpoint: maybe_tenths(current.dewpoint),
+        wind_speed_mph: maybe(current.wind_speed),
+        wind_gust_mph: maybe(current.wind_gust),
+        wind_bearing_degrees: maybe(current.wind_bearing),
+        visibility_meters: maybe(current.visibility),
+        probability_of_precipitation: maybe(current.pop),
+        temp_high: maybe_tenths(current.temp_high),
+        temp_low: maybe_tenths(current.temp_low),
+        sky: maybe(current.sky),
+    })
+}
+
+fn parse_equipment_csv(csv: &str) -> Vec<String> {
+    csv.split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
         .collect()
 }
 
@@ -333,6 +438,77 @@ mod tests {
     fn unknown_hvac_mode_falls_through() {
         assert!(matches!(parse_hvac_mode("eco"), HvacMode::Other(_)));
         assert_eq!(parse_hvac_mode("eco").as_label(), "eco");
+    }
+
+    #[test]
+    fn weather_block_parses_units_and_filters_sentinels() {
+        let json = r#"{
+            "thermostatList": [{
+                "identifier": "1",
+                "name": "X",
+                "runtime": {"connected": true, "actualTemperature": 700, "desiredHeat": 0, "desiredCool": 0},
+                "equipmentStatus": "compCool1,fan",
+                "weather": {
+                    "weatherStation": "FI:KCDW",
+                    "forecasts": [{
+                        "condition": "Cloudy",
+                        "temperature": 645,
+                        "pressure": 1017,
+                        "relativeHumidity": 78,
+                        "dewpoint": 575,
+                        "visibility": 24000,
+                        "windSpeed": 4,
+                        "windGust": -5002,
+                        "windBearing": 327,
+                        "pop": 0,
+                        "tempHigh": 645,
+                        "tempLow": 566,
+                        "sky": 5
+                    }]
+                }
+            }],
+            "status": {"code": 0, "message": ""}
+        }"#;
+        let wire: ThermostatListResponseWire = serde_json::from_str(json).unwrap();
+        let parsed: ThermostatListResponse = wire.into();
+        let domain = translate(&parsed);
+        let t = &domain[0];
+
+        let w = t.weather.as_ref().expect("weather populated");
+        assert_eq!(w.station, "FI:KCDW", "camelCase weatherStation must parse");
+        assert_eq!(w.condition, "Cloudy");
+        assert_eq!(w.temperature, Some(64.5));
+        assert_eq!(w.humidity, Some(78));
+        assert_eq!(w.pressure_mb, Some(1017));
+        assert_eq!(w.dewpoint, Some(57.5));
+        assert_eq!(w.wind_speed_mph, Some(4));
+        assert_eq!(w.wind_gust_mph, None, "-5002 sentinel must become None");
+        assert_eq!(w.wind_bearing_degrees, Some(327));
+        assert_eq!(w.visibility_meters, Some(24000));
+        assert_eq!(w.probability_of_precipitation, Some(0));
+        assert_eq!(w.temp_high, Some(64.5));
+        assert_eq!(w.temp_low, Some(56.6));
+
+        assert_eq!(t.equipment_running, vec!["compCool1", "fan"]);
+    }
+
+    #[test]
+    fn missing_weather_block_is_none() {
+        let wire: ThermostatListResponseWire = serde_json::from_str(SAMPLE).unwrap();
+        let parsed: ThermostatListResponse = wire.into();
+        let domain = translate(&parsed);
+        assert!(domain[0].weather.is_none());
+        assert!(domain[0].equipment_running.is_empty());
+    }
+
+    #[test]
+    fn equipment_csv_parsing_trims_and_drops_empties() {
+        assert!(parse_equipment_csv("").is_empty());
+        assert_eq!(parse_equipment_csv("fan"), vec!["fan"]);
+        assert_eq!(
+            parse_equipment_csv(" fan , compCool1 ,"),
+            vec!["fan", "compCool1"]
+        );
     }
 
     #[test]

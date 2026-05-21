@@ -123,21 +123,60 @@ leak into systemd journals and `ps`.
 
 ## Metrics
 
-Names and labels match billykwooten/ecobee-exporter for dashboard
-compatibility.
+The core set mirrors billykwooten/ecobee-exporter for dashboard
+compatibility. The extensions on top — `ecobee_connected`,
+`ecobee_outdoor_*`, `ecobee_equipment_running` — are noted in the
+description column.
+
+### Thermostat + sensor
 
 | Metric                            | Labels                                                              | Description                                                                            |
 |-----------------------------------|---------------------------------------------------------------------|----------------------------------------------------------------------------------------|
 | `ecobee_fetch_time`               | —                                                                   | Seconds the last upstream fetch took.                                                  |
-| `ecobee_fetch_failures_total`     | —                                                                   | Counter of failed fetches since start. *(extension; not in billykwooten)*              |
+| `ecobee_fetch_failures_total`     | —                                                                   | Counter of failed fetches since start. *(extension)*                                   |
 | `ecobee_actual_temperature`       | `thermostat_id`, `thermostat_name`                                  | Thermostat-averaged current temperature, degrees.                                      |
 | `ecobee_target_temperature_min`   | `thermostat_id`, `thermostat_name`                                  | Heating setpoint, degrees.                                                             |
 | `ecobee_target_temperature_max`   | `thermostat_id`, `thermostat_name`                                  | Cooling setpoint, degrees.                                                             |
 | `ecobee_currenthvacmode`          | `thermostat_id`, `thermostat_name`, `current_hvac_mode`             | Always `0`; the mode is encoded as a label, matching billykwooten.                     |
+| `ecobee_connected`                | `thermostat_id`, `thermostat_name`                                  | 1 if the thermostat is currently reachable by ecobee's cloud, else 0. *(extension)*    |
 | `ecobee_temperature`              | `thermostat_id`, `thermostat_name`, `sensor_id`, `sensor_name`, `sensor_type` | Per-sensor temperature, degrees.                                              |
 | `ecobee_humidity`                 | `thermostat_id`, `thermostat_name`, `sensor_id`, `sensor_name`, `sensor_type` | Per-sensor humidity, percent.                                                 |
 | `ecobee_occupancy`                | `thermostat_id`, `thermostat_name`, `sensor_id`, `sensor_name`, `sensor_type` | Per-sensor occupancy (0 or 1).                                                |
 | `ecobee_in_use`                   | `thermostat_id`, `thermostat_name`, `sensor_id`, `sensor_name`, `sensor_type` | Whether the sensor is being included in thermostat averages (0 or 1).         |
+
+### Outdoor weather *(extension)*
+
+Sourced from the thermostat's associated weather station's current
+forecast block. Any reading ecobee marks as missing (its `-5002`
+sentinel) is suppressed rather than reported as a fake value.
+
+| Metric                                            | Labels                                                | Description                                                                |
+|---------------------------------------------------|-------------------------------------------------------|----------------------------------------------------------------------------|
+| `ecobee_outdoor_temperature`                      | `thermostat_id`, `thermostat_name`, `station`         | Outdoor temperature, degrees (Fahrenheit for US accounts).                 |
+| `ecobee_outdoor_humidity`                         | `thermostat_id`, `thermostat_name`, `station`         | Outdoor relative humidity, percent.                                        |
+| `ecobee_outdoor_pressure_mb`                      | `thermostat_id`, `thermostat_name`, `station`         | Sea-level pressure, millibars (equivalent to hPa).                         |
+| `ecobee_outdoor_dewpoint`                         | `thermostat_id`, `thermostat_name`, `station`         | Outdoor dewpoint, degrees.                                                 |
+| `ecobee_outdoor_wind_speed_mph`                   | `thermostat_id`, `thermostat_name`, `station`         | Wind speed, mph.                                                           |
+| `ecobee_outdoor_wind_gust_mph`                    | `thermostat_id`, `thermostat_name`, `station`         | Wind gust, mph (often suppressed by ecobee).                               |
+| `ecobee_outdoor_wind_bearing_degrees`             | `thermostat_id`, `thermostat_name`, `station`         | Wind bearing, compass degrees (0 = N, 90 = E).                             |
+| `ecobee_outdoor_visibility_meters`                | `thermostat_id`, `thermostat_name`, `station`         | Visibility, meters.                                                        |
+| `ecobee_outdoor_probability_of_precipitation`     | `thermostat_id`, `thermostat_name`, `station`         | Probability of precipitation, percent (0–100).                             |
+| `ecobee_outdoor_temp_high`                        | `thermostat_id`, `thermostat_name`, `station`         | Forecast daily high, degrees.                                              |
+| `ecobee_outdoor_temp_low`                         | `thermostat_id`, `thermostat_name`, `station`         | Forecast daily low, degrees.                                               |
+
+### Equipment runtime *(extension)*
+
+`ecobee_equipment_running{equipment}` is a 0/1 gauge with one series per
+known equipment identifier per thermostat. Known values are:
+`heatPump`, `heatPump2`, `heatPump3`, `compCool1`, `compCool2`,
+`auxHeat1`, `auxHeat2`, `auxHeat3`, `fan`, `humidifier`, `dehumidifier`,
+`ventilator`, `economizer`, `compHotWater`, `auxHotWater`. Unknown
+identifiers that show up in a future ecobee build still appear as
+extra series.
+
+| Metric                       | Labels                                                | Description                                       |
+|------------------------------|-------------------------------------------------------|---------------------------------------------------|
+| `ecobee_equipment_running`   | `thermostat_id`, `thermostat_name`, `equipment`       | 1 if that equipment is currently running, else 0. |
 
 ## Architecture
 
@@ -185,10 +224,13 @@ Short-term:
 
 Medium-term (parity-plus):
 
-  - `ecobee_equipment_running{equipment}` if the Beehive response
-    includes the live equipment-status block.
-  - Outdoor temperature from the weather block.
-  - Air-quality metrics on Premium models.
+  - ~~`ecobee_equipment_running{equipment}`.~~ Done.
+  - ~~Outdoor weather metrics from the weather block.~~ Done.
+  - Per-equipment runtime minutes from the `extendedRuntime` block
+    (heat-pump, aux, cool, fan, humidifier, dehumidifier, ventilator
+    minute counters).
+  - Air-quality metrics on Premium models (`co2`, `vocPpb`,
+    `airQualityAccuracy`).
 
 Long-term (operational polish):
 
