@@ -1,0 +1,25 @@
+# Copy and adjust as needed, then:
+#   docker compose -f docker-compose.example.yml up -d
+#
+# One-time Auth0 login (interactive; writes refresh token into the volume):
+#   docker compose -f docker-compose.example.yml run --rm -it \
+#     --entrypoint ecobee-login ecobee-exporter
+#
+# Open the printed URL in a browser, complete MFA, copy the full callback URL
+# from the address bar, and paste it at the prompt. Then start the exporter.
+
+services:
+  ecobee-exporter:
+    image: ghcr.io/theaustrian75/ecobee-exporter:latest
+    restart: unless-stopped
+    ports:
+      - "9098:9098"
+    volumes:
+      - ecobee-exporter-data:/var/lib/ecobee-exporter
+    environment:
+      ECOBEE_STATE_FILE: /var/lib/ecobee-exporter/state.json
+      # ECOBEE_LISTEN_ADDR: 0.0.0.0:9098
+      # ECOBEE_POLL_INTERVAL: 3m
+
+volumes:
+  ecobee-exporter-data:
