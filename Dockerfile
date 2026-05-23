@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM rust:1-alpine3.21 AS builder
+FROM rust:1-alpine3.23 AS builder
 
 RUN apk add --no-cache musl-dev pkgconfig
 
@@ -11,7 +11,7 @@ COPY src ./src
 
 RUN cargo build --locked --release --bin ecobee-exporter --bin ecobee-login
 
-FROM alpine:3.21
+FROM alpine:3.23
 
 RUN apk add --no-cache ca-certificates \
     && adduser -D -H -u 1000 -s /sbin/nologin ecobee
