@@ -6,7 +6,7 @@ rust-version = "1.95"
 description = "Prometheus exporter for ecobee thermostats, sourced from the Beehive mobile-app GraphQL API"
 license = "Apache-2.0"
 readme = "README.md"
-repository = "https://github.com/klaus/ecobee-exporter"
+repository = "https://github.com/theaustrian75/ecobee-exporter"
 keywords = ["ecobee", "prometheus", "exporter", "metrics", "thermostat"]
 categories = ["command-line-utilities"]
 

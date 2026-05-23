@@ -30,7 +30,7 @@ use url::Url;
 struct Cli {
     /// Where to write the refresh token. Must match the exporter's
     /// `state_file` setting.
-    #[arg(long, default_value = "ecobee-exporter.state.json")]
+    #[arg(long, env = "ECOBEE_STATE_FILE", default_value = "ecobee-exporter.state.json")]
     state_file: PathBuf,
 
     /// Try to spawn the system browser via `xdg-open` / `open`. Off by

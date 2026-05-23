@@ -1,0 +1,14 @@
+/target
+**/*.rs.bk
+.git
+.gitignore
+.idea
+.vscode
+*.local.toml
+ecobee-exporter.toml
+ecobee-exporter.state.json
+*.state.json
+*.flow
+*.har
+*.mitm
+.env

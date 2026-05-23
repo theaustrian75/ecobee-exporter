@@ -92,6 +92,41 @@ cargo run --release                   # run the exporter
 curl http://localhost:9098/metrics
 ```
 
+### Docker (Alpine)
+
+Build and run with a persistent volume for the Auth0 refresh token:
+
+```sh
+docker build -t ecobee-exporter:local .
+
+# One-time interactive login (opens Auth0 in your browser on the host;
+# paste the callback URL when prompted). Writes state into the volume.
+docker run --rm -it \
+  -v ecobee-exporter-data:/var/lib/ecobee-exporter \
+  --entrypoint ecobee-login \
+  ecobee-exporter:local
+
+# Run the exporter (metrics on :9098, state read from the volume).
+docker run -d --name ecobee-exporter --restart unless-stopped \
+  -p 9098:9098 \
+  -v ecobee-exporter-data:/var/lib/ecobee-exporter \
+  ecobee-exporter:local
+
+curl http://localhost:9098/metrics
+```
+
+Demo mode without credentials:
+
+```sh
+docker run --rm -p 9098:9098 ecobee-exporter:local --demo
+```
+
+Environment variables follow the same `ECOBEE_*` prefix as bare-metal runs
+(e.g. `ECOBEE_LISTEN_ADDR`, `ECOBEE_POLL_INTERVAL`, `ECOBEE_STATE_FILE`).
+The image defaults `ECOBEE_STATE_FILE` to
+`/var/lib/ecobee-exporter/state.json` inside the container — mount a volume
+there so refresh tokens survive restarts.
+
 A TOML config file is optional. The defaults — base URL
 `https://api.ecobee.com/1`, port `9098`, 3-minute poll cadence — are
 what you want for ordinary use. Copy `ecobee-exporter.example.toml`
@@ -273,9 +308,36 @@ Medium-term (parity-plus):
 
 Long-term (operational polish):
 
-  - Dockerfile + multi-arch CI.
+  - ~~Dockerfile + GitHub Actions image build.~~ Done.
+  - Multi-arch container images.
   - systemd unit file with `DynamicUser=yes` and a state directory.
   - Grafana dashboard JSON checked in under `dashboards/`.
+
+## GitHub Actions
+
+CI runs on every push and pull request via [`.github/workflows/ci.yml`](./.github/workflows/ci.yml):
+
+| Job | What it does |
+|---|---|
+| `rust` | `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test --locked` |
+| `docker` | Builds the Alpine image; pushes to GitHub Container Registry on branch pushes and tags (build-only on PRs) |
+
+After the first push to `master`, pull the image:
+
+```sh
+docker pull ghcr.io/OWNER/ecobee-exporter:master
+```
+
+Tagged releases also publish `:latest`:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+# → ghcr.io/OWNER/ecobee-exporter:v0.1.0
+# → ghcr.io/OWNER/ecobee-exporter:latest
+```
+
+Make the package public under **GitHub → Packages → ecobee-exporter → Package settings** if you want anonymous pulls without `docker login ghcr.io`.
 
 ## Development
 
