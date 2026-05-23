@@ -91,7 +91,8 @@ async fn fake_provider_round_trip_renders_billykwooten_parity_metrics() {
         "expected cool1 interval 2 runtime=300 in demo output"
     );
     assert!(
-        rendered.contains("alert_type=\"maintenance\"") && rendered.contains("alert_number=\"3140\""),
+        rendered.contains("alert_type=\"maintenance\"")
+            && rendered.contains("alert_number=\"3140\""),
         "expected demo alert series"
     );
     assert!(

@@ -19,7 +19,11 @@ impl Collector {
         metrics: Arc<Metrics>,
         poll_interval: std::time::Duration,
     ) -> Self {
-        Self { provider, metrics, poll_interval }
+        Self {
+            provider,
+            metrics,
+            poll_interval,
+        }
     }
 
     /// Run the polling loop until cancelled. Does one immediate fetch on

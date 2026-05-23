@@ -41,98 +41,121 @@ impl FakeProvider {
 
     /// A representative two-sensor snapshot useful for smoke tests and demos.
     pub fn demo() -> Self {
-        use crate::model::{
-            Alert, EquipmentRuntime, ExtendedRuntime, HvacMode, Program, RemoteSensor, Runtime,
-            SensorCapability, Settings, Thermostat, Weather,
-        };
-        let demo = Thermostat {
-            identifier: "411111111111".into(),
+        Self::new(vec![demo_thermostat()])
+    }
+}
+
+fn demo_sensors() -> Vec<crate::model::RemoteSensor> {
+    use crate::model::{RemoteSensor, SensorCapability};
+    vec![
+        RemoteSensor {
+            id: "ei:0".into(),
             name: "Main Floor".into(),
-            connected: true,
-            runtime: Runtime {
-                actual_temperature: 721,
-                desired_heat: 680,
-                desired_cool: 760,
-                actual_humidity: Some(43),
-                desired_humidity: Some(36),
-                desired_dehumidity: Some(60),
-                raw_temperature: Some(719),
-                desired_fan_mode: Some("auto".into()),
-            },
-            settings: Settings {
-                hvac_mode: HvacMode::Auto,
-                follow_me_comfort: true,
-                smart_circulation: false,
-                heat_stages: Some(1),
-                cool_stages: Some(1),
-            },
-            sensors: vec![
-                RemoteSensor {
-                    id: "ei:0".into(),
-                    name: "Main Floor".into(),
-                    sensor_type: "thermostat".into(),
-                    in_use: true,
-                    capabilities: vec![
-                        SensorCapability { kind: "temperature".into(), value: "721".into() },
-                        SensorCapability { kind: "humidity".into(),    value: "43".into() },
-                        SensorCapability { kind: "occupancy".into(),   value: "true".into() },
-                    ],
+            sensor_type: "thermostat".into(),
+            in_use: true,
+            capabilities: vec![
+                SensorCapability {
+                    kind: "temperature".into(),
+                    value: "721".into(),
                 },
-                RemoteSensor {
-                    id: "rs:100".into(),
-                    name: "Bedroom".into(),
-                    sensor_type: "ecobee3_remote_sensor".into(),
-                    in_use: false,
-                    capabilities: vec![
-                        SensorCapability { kind: "temperature".into(), value: "693".into() },
-                        SensorCapability { kind: "occupancy".into(),   value: "false".into() },
-                    ],
+                SensorCapability {
+                    kind: "humidity".into(),
+                    value: "43".into(),
+                },
+                SensorCapability {
+                    kind: "occupancy".into(),
+                    value: "true".into(),
                 },
             ],
-            weather: Some(Weather {
-                station: "FI:KDEMO".into(),
-                condition: "Cloudy".into(),
-                temperature: Some(64.5),
-                humidity: Some(78),
-                pressure_mb: Some(1017),
-                dewpoint: Some(57.5),
-                wind_speed_mph: Some(4),
-                wind_gust_mph: None,
-                wind_bearing_degrees: Some(327),
-                visibility_meters: Some(24000),
-                probability_of_precipitation: Some(0),
-                temp_high: Some(64.5),
-                temp_low: Some(56.6),
-                sky: Some(5),
-            }),
-            equipment_running: vec!["fan".into(), "compCool1".into()],
-            program: Some(Program {
-                current_climate_ref: Some("home".into()),
-            }),
-            hold: None,
-            extended_runtime: Some(ExtendedRuntime {
-                equipment: vec![
-                    EquipmentRuntime {
-                        name: "cool1".into(),
-                        seconds: [0, 120, 300],
-                    },
-                    EquipmentRuntime {
-                        name: "fan".into(),
-                        seconds: [0, 120, 300],
-                    },
-                ],
-                dm_offset: [Some(-3), Some(-2), Some(0)],
-                current_electricity_bill: None,
-                projected_electricity_bill: None,
-            }),
-            alerts: vec![Alert {
-                alert_type: "maintenance".into(),
-                alert_number: Some(3140),
-                severity: "reminder".into(),
-                text: "HVAC maintenance reminder".into(),
-            }],
-        };
-        Self::new(vec![demo])
+        },
+        RemoteSensor {
+            id: "rs:100".into(),
+            name: "Bedroom".into(),
+            sensor_type: "ecobee3_remote_sensor".into(),
+            in_use: false,
+            capabilities: vec![
+                SensorCapability {
+                    kind: "temperature".into(),
+                    value: "693".into(),
+                },
+                SensorCapability {
+                    kind: "occupancy".into(),
+                    value: "false".into(),
+                },
+            ],
+        },
+    ]
+}
+
+fn demo_thermostat() -> Thermostat {
+    use crate::model::{
+        Alert, EquipmentRuntime, ExtendedRuntime, HvacMode, Program, Runtime, Settings, Thermostat,
+        Weather,
+    };
+    Thermostat {
+        identifier: "411111111111".into(),
+        name: "Main Floor".into(),
+        connected: true,
+        runtime: Runtime {
+            actual_temperature: 721,
+            desired_heat: 680,
+            desired_cool: 760,
+            actual_humidity: Some(43),
+            desired_humidity: Some(36),
+            desired_dehumidity: Some(60),
+            raw_temperature: Some(719),
+            desired_fan_mode: Some("auto".into()),
+        },
+        settings: Settings {
+            hvac_mode: HvacMode::Auto,
+            follow_me_comfort: true,
+            smart_circulation: false,
+            heat_stages: Some(1),
+            cool_stages: Some(1),
+        },
+        sensors: demo_sensors(),
+        weather: Some(Weather {
+            station: "FI:KDEMO".into(),
+            condition: "Cloudy".into(),
+            temperature: Some(64.5),
+            humidity: Some(78),
+            pressure_mb: Some(1017),
+            dewpoint: Some(57.5),
+            wind_speed_mph: Some(4),
+            wind_gust_mph: None,
+            wind_bearing_degrees: Some(327),
+            visibility_meters: Some(24000),
+            probability_of_precipitation: Some(0),
+            temp_high: Some(64.5),
+            temp_low: Some(56.6),
+            sky: Some(5),
+        }),
+        equipment_running: vec!["fan".into(), "compCool1".into()],
+        program: Some(Program {
+            current_climate_ref: Some("home".into()),
+        }),
+        hold: None,
+        extended_runtime: Some(ExtendedRuntime {
+            equipment: vec![
+                EquipmentRuntime {
+                    name: "cool1".into(),
+                    seconds: [0, 120, 300],
+                },
+                EquipmentRuntime {
+                    name: "fan".into(),
+                    seconds: [0, 120, 300],
+                },
+            ],
+            dm_offset: [Some(-3), Some(-2), Some(0)],
+            current_electricity_bill: None,
+            projected_electricity_bill: None,
+        }),
+        alerts: vec![Alert {
+            alert_type: "maintenance".into(),
+            alert_number: Some(3140),
+            severity: "reminder".into(),
+            text: "HVAC maintenance reminder".into(),
+        }],
     }
 }
 

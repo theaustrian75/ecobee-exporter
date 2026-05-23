@@ -46,10 +46,15 @@ pub struct PersistedState {
 impl PersistedState {
     pub fn load(path: &Path) -> Result<Self, StateError> {
         match fs::read(path) {
-            Ok(bytes) => serde_json::from_slice(&bytes)
-                .map_err(|source| StateError::Decode { path: path.to_path_buf(), source }),
+            Ok(bytes) => serde_json::from_slice(&bytes).map_err(|source| StateError::Decode {
+                path: path.to_path_buf(),
+                source,
+            }),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
-            Err(source) => Err(StateError::Io { path: path.to_path_buf(), source }),
+            Err(source) => Err(StateError::Io {
+                path: path.to_path_buf(),
+                source,
+            }),
         }
     }
 
@@ -58,21 +63,29 @@ impl PersistedState {
         if let Some(parent) = path.parent()
             && !parent.as_os_str().is_empty()
         {
-            fs::create_dir_all(parent)
-                .map_err(|source| StateError::Io { path: parent.to_path_buf(), source })?;
+            fs::create_dir_all(parent).map_err(|source| StateError::Io {
+                path: parent.to_path_buf(),
+                source,
+            })?;
         }
         let tmp = path.with_extension("json.tmp");
-        fs::write(&tmp, &bytes)
-            .map_err(|source| StateError::Io { path: tmp.clone(), source })?;
+        fs::write(&tmp, &bytes).map_err(|source| StateError::Io {
+            path: tmp.clone(),
+            source,
+        })?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let perms = std::fs::Permissions::from_mode(0o600);
-            fs::set_permissions(&tmp, perms)
-                .map_err(|source| StateError::Io { path: tmp.clone(), source })?;
+            fs::set_permissions(&tmp, perms).map_err(|source| StateError::Io {
+                path: tmp.clone(),
+                source,
+            })?;
         }
-        fs::rename(&tmp, path)
-            .map_err(|source| StateError::Io { path: path.to_path_buf(), source })?;
+        fs::rename(&tmp, path).map_err(|source| StateError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
         Ok(())
     }
 }

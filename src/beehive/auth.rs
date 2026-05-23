@@ -17,12 +17,7 @@
 
 use std::{path::PathBuf, time::SystemTime};
 
-use crate::{
-    auth0,
-    config::BeehiveConfig,
-    provider::ProviderError,
-    state::PersistedState,
-};
+use crate::{auth0, config::BeehiveConfig, provider::ProviderError, state::PersistedState};
 
 use super::client::BeehiveClient;
 
@@ -33,9 +28,8 @@ pub struct AuthState {
 
 impl AuthState {
     pub fn load(cfg: &BeehiveConfig, state_file: PathBuf) -> Result<Self, ProviderError> {
-        let mut persisted = PersistedState::load(&state_file).map_err(|e| {
-            ProviderError::Auth(format!("loading {}: {e}", state_file.display()))
-        })?;
+        let mut persisted = PersistedState::load(&state_file)
+            .map_err(|e| ProviderError::Auth(format!("loading {}: {e}", state_file.display())))?;
         if let Some(rt) = cfg.refresh_token.clone()
             && persisted.refresh_token.as_ref() != Some(&rt)
         {
@@ -44,15 +38,20 @@ impl AuthState {
             persisted.access_token = None;
             persisted.access_expires_at = None;
         }
-        Ok(Self { state_file, persisted })
+        Ok(Self {
+            state_file,
+            persisted,
+        })
     }
 
     /// Return a usable bearer token. Refreshes from Auth0 if the cached
     /// one is missing or near expiry. Persists rotated refresh tokens
     /// back to disk on each successful exchange.
     pub async fn access_token(&mut self, client: &BeehiveClient) -> Result<String, ProviderError> {
-        if let (Some(tok), Some(exp)) = (&self.persisted.access_token, self.persisted.access_expires_at)
-            && exp.saturating_sub(now_unix()) > 30
+        if let (Some(tok), Some(exp)) = (
+            &self.persisted.access_token,
+            self.persisted.access_expires_at,
+        ) && exp.saturating_sub(now_unix()) > 30
         {
             return Ok(tok.clone());
         }

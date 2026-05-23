@@ -76,7 +76,9 @@ pub struct BeehiveConfig {
 
 impl Config {
     fn default_listen_addr() -> SocketAddr {
-        "0.0.0.0:9098".parse().expect("default listen addr is valid")
+        "0.0.0.0:9098"
+            .parse()
+            .expect("default listen addr is valid")
     }
 
     fn default_poll_interval() -> Duration {

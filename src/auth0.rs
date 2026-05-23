@@ -22,8 +22,7 @@ use url::Url;
 
 pub const AUTH_DOMAIN: &str = "auth.ecobee.com";
 pub const CLIENT_ID: &str = "yg66ag34vWdf2Hs4oO2ih2BvI16KrkOR";
-pub const REDIRECT_URI: &str =
-    "https://auth.ecobee.com/android/com.ecobee.athenamobile/callback";
+pub const REDIRECT_URI: &str = "https://auth.ecobee.com/android/com.ecobee.athenamobile/callback";
 pub const AUDIENCE: &str = "https://prod.ecobee.com/api/v1";
 pub const SCOPE: &str = "openid offline_access smartWrite piiWrite piiRead";
 
@@ -62,7 +61,12 @@ impl PkcePair {
         let challenge = challenge_from_verifier(&verifier);
         let state = random_url_safe(24)?;
         let nonce = random_url_safe(24)?;
-        Ok(Self { verifier, challenge, state, nonce })
+        Ok(Self {
+            verifier,
+            challenge,
+            state,
+            nonce,
+        })
     }
 }
 
@@ -170,7 +174,10 @@ async fn post_token<B: Serialize>(
     let status = resp.status();
     if !status.is_success() {
         let text = resp.text().await.unwrap_or_default();
-        return Err(Auth0Error::TokenError { status: status.as_u16(), body: text });
+        return Err(Auth0Error::TokenError {
+            status: status.as_u16(),
+            body: text,
+        });
     }
     let tokens: TokenResponse = resp.json().await?;
     if tokens.access_token.is_empty() {
@@ -213,14 +220,22 @@ mod tests {
             nonce: "n".into(),
         };
         let url = build_authorize_url(&pair).unwrap();
-        let qs: std::collections::HashMap<_, _> =
-            url.query_pairs().map(|(k, v)| (k.into_owned(), v.into_owned())).collect();
+        let qs: std::collections::HashMap<_, _> = url
+            .query_pairs()
+            .map(|(k, v)| (k.into_owned(), v.into_owned()))
+            .collect();
         assert_eq!(qs.get("client_id").map(String::as_str), Some(CLIENT_ID));
-        assert_eq!(qs.get("redirect_uri").map(String::as_str), Some(REDIRECT_URI));
+        assert_eq!(
+            qs.get("redirect_uri").map(String::as_str),
+            Some(REDIRECT_URI)
+        );
         assert_eq!(qs.get("audience").map(String::as_str), Some(AUDIENCE));
         assert_eq!(qs.get("scope").map(String::as_str), Some(SCOPE));
         assert_eq!(qs.get("response_type").map(String::as_str), Some("code"));
-        assert_eq!(qs.get("code_challenge_method").map(String::as_str), Some("S256"));
+        assert_eq!(
+            qs.get("code_challenge_method").map(String::as_str),
+            Some("S256")
+        );
         assert_eq!(qs.get("code_challenge").map(String::as_str), Some("c"));
         assert_eq!(qs.get("state").map(String::as_str), Some("s"));
         assert_eq!(qs.get("nonce").map(String::as_str), Some("n"));

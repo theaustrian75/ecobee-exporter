@@ -37,9 +37,15 @@ const FAN_MODE_LABELS: &[&str] = &["thermostat_id", "thermostat_name", "desired_
 const CLIMATE_LABELS: &[&str] = &["thermostat_id", "thermostat_name", "current_climate"];
 const EVENT_TYPE_LABELS: &[&str] = &["thermostat_id", "thermostat_name", "event_type"];
 const EQUIPMENT_LABELS: &[&str] = &["thermostat_id", "thermostat_name", "equipment"];
-const RUNTIME_INTERVAL_LABELS: &[&str] = &["thermostat_id", "thermostat_name", "equipment", "interval"];
+const RUNTIME_INTERVAL_LABELS: &[&str] =
+    &["thermostat_id", "thermostat_name", "equipment", "interval"];
 const DM_OFFSET_LABELS: &[&str] = &["thermostat_id", "thermostat_name", "interval"];
-const ALERT_LABELS: &[&str] = &["thermostat_id", "thermostat_name", "alert_type", "alert_number"];
+const ALERT_LABELS: &[&str] = &[
+    "thermostat_id",
+    "thermostat_name",
+    "alert_type",
+    "alert_number",
+];
 
 /// Equipment names ecobee will emit in `equipmentStatus`. We pre-register
 /// a series at value 0 for every one of these on every poll so PromQL
@@ -171,7 +177,10 @@ impl Metrics {
         )?;
 
         let temperature = GaugeVec::new(
-            Opts::new("ecobee_temperature", "per-sensor reported temperature in degrees"),
+            Opts::new(
+                "ecobee_temperature",
+                "per-sensor reported temperature in degrees",
+            ),
             SENSOR_LABELS,
         )?;
         let humidity = GaugeVec::new(
@@ -198,7 +207,10 @@ impl Metrics {
             WEATHER_LABELS,
         )?;
         let outdoor_humidity = GaugeVec::new(
-            Opts::new("ecobee_outdoor_humidity", "outdoor relative humidity, percent"),
+            Opts::new(
+                "ecobee_outdoor_humidity",
+                "outdoor relative humidity, percent",
+            ),
             WEATHER_LABELS,
         )?;
         let outdoor_pressure_mb = GaugeVec::new(
@@ -213,7 +225,10 @@ impl Metrics {
             WEATHER_LABELS,
         )?;
         let outdoor_wind_speed_mph = GaugeVec::new(
-            Opts::new("ecobee_outdoor_wind_speed_mph", "wind speed, miles per hour"),
+            Opts::new(
+                "ecobee_outdoor_wind_speed_mph",
+                "wind speed, miles per hour",
+            ),
             WEATHER_LABELS,
         )?;
         let outdoor_wind_gust_mph = GaugeVec::new(
@@ -239,11 +254,17 @@ impl Metrics {
             WEATHER_LABELS,
         )?;
         let outdoor_temp_high = GaugeVec::new(
-            Opts::new("ecobee_outdoor_temp_high", "forecast daily high temperature, degrees"),
+            Opts::new(
+                "ecobee_outdoor_temp_high",
+                "forecast daily high temperature, degrees",
+            ),
             WEATHER_LABELS,
         )?;
         let outdoor_temp_low = GaugeVec::new(
-            Opts::new("ecobee_outdoor_temp_low", "forecast daily low temperature, degrees"),
+            Opts::new(
+                "ecobee_outdoor_temp_low",
+                "forecast daily low temperature, degrees",
+            ),
             WEATHER_LABELS,
         )?;
 
@@ -267,7 +288,10 @@ impl Metrics {
             RUNTIME_LABELS,
         )?;
         let desired_dehumidity = GaugeVec::new(
-            Opts::new("ecobee_desired_dehumidity", "dehumidifier setpoint, percent"),
+            Opts::new(
+                "ecobee_desired_dehumidity",
+                "dehumidifier setpoint, percent",
+            ),
             RUNTIME_LABELS,
         )?;
         let raw_temperature = GaugeVec::new(
@@ -599,10 +623,18 @@ impl Metrics {
         let labels = [t.identifier.as_str(), t.name.as_str()];
         self.follow_me_comfort
             .with_label_values(&labels)
-            .set(if t.settings.follow_me_comfort { 1.0 } else { 0.0 });
+            .set(if t.settings.follow_me_comfort {
+                1.0
+            } else {
+                0.0
+            });
         self.smart_circulation
             .with_label_values(&labels)
-            .set(if t.settings.smart_circulation { 1.0 } else { 0.0 });
+            .set(if t.settings.smart_circulation {
+                1.0
+            } else {
+                0.0
+            });
         if let Some(v) = t.settings.heat_stages {
             self.heat_stages
                 .with_label_values(&labels)
@@ -616,11 +648,10 @@ impl Metrics {
     }
 
     fn record_program(&self, t: &Thermostat) {
-        let Some(program) = t.program.as_ref() else { return };
-        let climate = program
-            .current_climate_ref
-            .as_deref()
-            .unwrap_or("unknown");
+        let Some(program) = t.program.as_ref() else {
+            return;
+        };
+        let climate = program.current_climate_ref.as_deref().unwrap_or("unknown");
         self.current_climate
             .with_label_values(&[t.identifier.as_str(), t.name.as_str(), climate])
             .set(0.0);
@@ -638,7 +669,11 @@ impl Metrics {
         };
 
         self.event_type
-            .with_label_values(&[t.identifier.as_str(), t.name.as_str(), hold.event_type.as_str()])
+            .with_label_values(&[
+                t.identifier.as_str(),
+                t.name.as_str(),
+                hold.event_type.as_str(),
+            ])
             .set(0.0);
         if let Some(v) = hold.heat_hold_temp {
             self.hold_heat_temp
@@ -653,7 +688,9 @@ impl Metrics {
     }
 
     fn record_extended_runtime(&self, t: &Thermostat) {
-        let Some(ext) = t.extended_runtime.as_ref() else { return };
+        let Some(ext) = t.extended_runtime.as_ref() else {
+            return;
+        };
         let id = t.identifier.as_str();
         let name = t.name.as_str();
 
@@ -711,25 +748,37 @@ impl Metrics {
             self.outdoor_temperature.with_label_values(&labels).set(v);
         }
         if let Some(v) = w.humidity {
-            self.outdoor_humidity.with_label_values(&labels).set(f64::from(v));
+            self.outdoor_humidity
+                .with_label_values(&labels)
+                .set(f64::from(v));
         }
         if let Some(v) = w.pressure_mb {
-            self.outdoor_pressure_mb.with_label_values(&labels).set(f64::from(v));
+            self.outdoor_pressure_mb
+                .with_label_values(&labels)
+                .set(f64::from(v));
         }
         if let Some(v) = w.dewpoint {
             self.outdoor_dewpoint.with_label_values(&labels).set(v);
         }
         if let Some(v) = w.wind_speed_mph {
-            self.outdoor_wind_speed_mph.with_label_values(&labels).set(f64::from(v));
+            self.outdoor_wind_speed_mph
+                .with_label_values(&labels)
+                .set(f64::from(v));
         }
         if let Some(v) = w.wind_gust_mph {
-            self.outdoor_wind_gust_mph.with_label_values(&labels).set(f64::from(v));
+            self.outdoor_wind_gust_mph
+                .with_label_values(&labels)
+                .set(f64::from(v));
         }
         if let Some(v) = w.wind_bearing_degrees {
-            self.outdoor_wind_bearing_degrees.with_label_values(&labels).set(f64::from(v));
+            self.outdoor_wind_bearing_degrees
+                .with_label_values(&labels)
+                .set(f64::from(v));
         }
         if let Some(v) = w.visibility_meters {
-            self.outdoor_visibility_meters.with_label_values(&labels).set(f64::from(v));
+            self.outdoor_visibility_meters
+                .with_label_values(&labels)
+                .set(f64::from(v));
         }
         if let Some(v) = w.probability_of_precipitation {
             self.outdoor_probability_of_precipitation

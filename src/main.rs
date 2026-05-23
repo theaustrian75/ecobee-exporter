@@ -50,9 +50,7 @@ async fn main() -> anyhow::Result<()> {
     let metrics = Arc::new(Metrics::new().context("setting up Prometheus registry")?);
 
     let provider: Arc<dyn ThermostatProvider> = if cfg.demo {
-        tracing::warn!(
-            "demo mode: serving canned data, no Beehive calls will be made"
-        );
+        tracing::warn!("demo mode: serving canned data, no Beehive calls will be made");
         Arc::new(FakeProvider::demo())
     } else {
         Arc::new(
@@ -61,7 +59,11 @@ async fn main() -> anyhow::Result<()> {
         )
     };
 
-    let collector = Collector::new(Arc::clone(&provider), Arc::clone(&metrics), cfg.poll_interval);
+    let collector = Collector::new(
+        Arc::clone(&provider),
+        Arc::clone(&metrics),
+        cfg.poll_interval,
+    );
     let collector_task = tokio::spawn(collector.run());
 
     let app = router(AppState { metrics });

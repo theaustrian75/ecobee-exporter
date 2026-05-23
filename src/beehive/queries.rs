@@ -121,7 +121,10 @@ struct ThermostatListResponseWire {
 
 impl From<ThermostatListResponseWire> for ThermostatListResponse {
     fn from(w: ThermostatListResponseWire) -> Self {
-        Self { thermostat_list: w.thermostat_list, status: w.status }
+        Self {
+            thermostat_list: w.thermostat_list,
+            status: w.status,
+        }
     }
 }
 
@@ -621,7 +624,11 @@ mod tests {
         assert_eq!(t.settings.hvac_mode.as_label(), "auto");
         assert_eq!(t.sensors.len(), 2);
         assert!(t.sensors[0].in_use);
-        let cap_kinds: Vec<&str> = t.sensors[0].capabilities.iter().map(|c| c.kind.as_str()).collect();
+        let cap_kinds: Vec<&str> = t.sensors[0]
+            .capabilities
+            .iter()
+            .map(|c| c.kind.as_str())
+            .collect();
         assert_eq!(cap_kinds, vec!["temperature", "humidity", "occupancy"]);
     }
 
@@ -771,11 +778,7 @@ mod tests {
         assert_eq!(hold.heat_hold_temp, Some(650));
 
         let ext = t.extended_runtime.as_ref().unwrap();
-        let cool1 = ext
-            .equipment
-            .iter()
-            .find(|e| e.name == "cool1")
-            .unwrap();
+        let cool1 = ext.equipment.iter().find(|e| e.name == "cool1").unwrap();
         assert_eq!(cool1.seconds, [0, 120, 300]);
         assert_eq!(ext.dm_offset[2], Some(0));
 
