@@ -1,7 +1,7 @@
 //! Auth0 + PKCE client for ecobee's mobile-app OAuth tenant.
 //!
-//! Constants here come from a capture of the ecobee Android app's
-//! Auth0 Universal Login flow (`auth.ecobee.com`). They are *public*
+//! Constants here match the ecobee Android app's Auth0 Universal Login
+//! flow (`auth.ecobee.com`). They are *public*
 //! client parameters baked into the app binary — there is no
 //! `client_secret` because the client is a public PKCE client.
 //!

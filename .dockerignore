@@ -8,7 +8,4 @@
 ecobee-exporter.toml
 ecobee-exporter.state.json
 *.state.json
-*.flow
-*.har
-*.mitm
 .env

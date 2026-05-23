@@ -50,14 +50,11 @@ pub struct Config {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BeehiveConfig {
-    /// GraphQL endpoint URL. The exact host has not been disclosed in any
-    /// public source as of mid-2026 — supply it from your own capture (see
-    /// `CAPTURE.md`).
+    /// Data API base URL. Defaults to `https://api.ecobee.com/1` when unset.
     #[serde(default)]
     pub endpoint: Option<String>,
 
-    /// `User-Agent` to send. Mimic the official mobile app's value from your
-    /// capture; some upstream APIs reject vanilla `reqwest/x.y.z`.
+    /// `User-Agent` to send. Some upstream APIs reject vanilla `reqwest/x.y.z`.
     #[serde(default)]
     pub user_agent: Option<String>,
 

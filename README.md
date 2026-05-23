@@ -284,8 +284,7 @@ data over local HomeKit (and Matter on newer Premium/Enhanced models),
 which would avoid the ToS issue entirely. The current Rust HomeKit
 Accessory Protocol *controller* ecosystem is thin compared to the
 Python `aiohomekit` library that Home Assistant uses, so the
-implementation cost is high. If Beehive turns out to be too hostile or
-the capture work doesn't pan out, falling back to a HomeKit-based
+implementation cost is high. If Beehive turns out to be too hostile, falling back to a HomeKit-based
 `ThermostatProvider` is the natural next step — the rest of the
 exporter is unchanged.
 

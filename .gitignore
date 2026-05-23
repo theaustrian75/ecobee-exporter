@@ -7,15 +7,6 @@ ecobee-exporter.toml
 .env
 *.local.toml
 
-# Captured traffic — anywhere in the tree — almost always contains
-# tokens, cookies, or PII. Track only the curated, sanitized fixtures
-# we explicitly commit under samples/.
-*.flow
-*.har
-*.mitm
-/samples/*.json
-!/samples/example-*.json
-
 # Persisted refresh + access tokens written by `ecobee-login`.
 ecobee-exporter.state.json
 *.state.json

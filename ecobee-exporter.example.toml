@@ -11,8 +11,7 @@ poll_interval = "3m"
 state_file = "./ecobee-exporter.state.json"
 
 # Set to true to skip Beehive entirely and serve canned data — useful
-# for building dashboards and Prometheus configs before you've finished
-# the mitmproxy capture work.
+# for building dashboards and Prometheus configs without credentials.
 demo = false
 
 [beehive]

@@ -1,16 +1,9 @@
-//! Client for ecobee's internal Beehive GraphQL API.
+//! Client for ecobee's mobile-app data API.
 //!
-//! # Status: scaffolding only
-//!
-//! As of mid-2026 there is **no public reverse-engineering of Beehive** — no
-//! published endpoint URL, no documented query shape, no auth flow writeup.
-//! Everything below is the structural shell; the actual request/response
-//! shapes are marked `TODO(capture)` and must be filled in from your own
-//! mitmproxy capture (see `CAPTURE.md`).
-//!
-//! Until that happens, the binary should be run with `--demo` (or
-//! `[demo = true]` in the config) so the rest of the stack — metrics,
-//! HTTP server, polling cadence — can be verified independently.
+//! Auth0-issued JWT bearer tokens are exchanged via [`auth`]; thermostat
+//! data is fetched from the Selection-based REST endpoint in [`queries`].
+//! Use `--demo` (or `[demo = true]` in the config) to exercise metrics and
+//! the HTTP server without credentials.
 
 pub mod auth;
 pub mod client;

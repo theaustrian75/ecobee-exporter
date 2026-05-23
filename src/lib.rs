@@ -5,8 +5,7 @@
 //! registrations have been closed since March 28, 2024 and pre-existing keys
 //! are not assumed.
 //!
-//! See `README.md` for the ToS caveat and `CAPTURE.md` for how to bootstrap
-//! credentials by capturing your own mobile-app traffic.
+//! See `README.md` for the ToS caveat and bootstrap instructions.
 
 pub mod auth0;
 pub mod beehive;

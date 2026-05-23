@@ -44,8 +44,7 @@ missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 must_use_candidate = "allow"
 doc_markdown = "allow"
-# Several Beehive client methods are async stubs that will await once the
-# protocol is captured. Keeping them async keeps the trait stable.
+# Beehive client methods are async to keep the ThermostatProvider trait stable.
 unused_async = "allow"
 
 [profile.release]

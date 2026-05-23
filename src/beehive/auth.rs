@@ -1,7 +1,7 @@
 //! Token management for the Beehive client.
 //!
-//! Refreshes are real (against Auth0 `/oauth/token` with the captured
-//! `client_id`); the initial interactive login lives in the
+//! Refreshes are real (against Auth0 `/oauth/token` with the mobile app's
+//! public `client_id`); the initial interactive login lives in the
 //! `ecobee-login` binary, not here, because it requires a human at a
 //! browser to handle Auth0's MFA prompt.
 //!

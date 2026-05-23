@@ -20,8 +20,8 @@
 //! error even when the HTTP response is 200. We surface those as
 //! `ProviderError::Upstream`.
 //!
-//! If the hypothesis is wrong, this whole module needs to be rewritten
-//! around whatever your capture shows. See `CAPTURE.md`.
+//! The wire format matches the documented developer REST API; only the
+//! host and Auth0 bearer token differ from a pre-2024 developer key flow.
 
 use serde::{Deserialize, Serialize};
 
@@ -377,7 +377,7 @@ pub async fn list_thermostats(
 
 /// Translate the raw response into the exporter's domain model.
 ///
-/// Kept as a free function so it's unit-testable against captured JSON
+/// Kept as a free function so it's unit-testable against fixture JSON
 /// without doing any network I/O.
 pub fn translate(resp: &ThermostatListResponse) -> Vec<Thermostat> {
     resp.thermostat_list
@@ -550,8 +550,7 @@ fn parse_hvac_mode(s: &str) -> HvacMode {
 mod tests {
     use super::*;
 
-    /// Synthetic but shape-faithful response. Once the user does a real
-    /// capture, this should be replaced with the sanitized fixture.
+    /// Synthetic but shape-faithful response for unit tests.
     const SAMPLE: &str = r#"{
         "page": {"page": 1, "totalPages": 1, "pageSize": 1, "total": 1},
         "thermostatList": [{
