@@ -32,6 +32,8 @@ impl Collector {
         let mut ticker = interval(self.poll_interval);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
+        self.poll_once().await;
+
         loop {
             ticker.tick().await;
             self.poll_once().await;

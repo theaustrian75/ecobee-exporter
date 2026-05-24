@@ -161,6 +161,25 @@ fn pick_address(addrs: &std::collections::HashSet<IpAddr>) -> Option<IpAddr> {
 /// Default mDNS browse duration used by [`Controller::discover`].
 pub const DISCOVER_TIMEOUT_SECS: u64 = 5;
 
+/// Normalize a HomeKit accessory id for comparison (strip separators, lowercase hex).
+pub fn normalize_accessory_id(id: &str) -> String {
+    id.chars()
+        .filter(|c| c.is_ascii_hexdigit())
+        .collect::<String>()
+        .to_ascii_lowercase()
+}
+
+/// Find a discovered accessory whose HAP `id` matches `accessory_id`.
+pub fn find_by_accessory_id<'a>(
+    accessories: &'a [DiscoveredAccessory],
+    accessory_id: &str,
+) -> Option<&'a DiscoveredAccessory> {
+    let needle = normalize_accessory_id(accessory_id);
+    accessories
+        .iter()
+        .find(|a| normalize_accessory_id(&a.id) == needle)
+}
+
 /// Browse `_hap._tcp` for HomeKit accessories on the LAN.
 pub async fn discover(timeout_secs: u64) -> Result<Vec<DiscoveredAccessory>, DiscoveryError> {
     use mdns_sd::{ServiceDaemon, ServiceEvent};
@@ -290,6 +309,32 @@ mod tests {
             pick_address(&addrs),
             Some(IpAddr::V4(Ipv4Addr::new(172, 30, 0, 102)))
         );
+    }
+
+    #[test]
+    fn normalize_accessory_id_strips_separators() {
+        assert_eq!(
+            normalize_accessory_id("18:E2:7F:FE:8D:24"),
+            "18e27ffe8d24"
+        );
+        assert_eq!(normalize_accessory_id("18E27FFE8D24"), "18e27ffe8d24");
+    }
+
+    #[test]
+    fn find_by_accessory_id_matches_mdns_id() {
+        let item = DiscoveredAccessory {
+            name: "Living-Room.local".into(),
+            id: "18E27FFE8D24".into(),
+            addr: IpAddr::V4(Ipv4Addr::new(192, 168, 1, 50)),
+            port: 55118,
+            model: "ecobee3 lite".into(),
+            state_number: 1,
+            feature_flags: 0,
+            status_flags: 0,
+            category: AccessoryCategory::Thermostat,
+            txt_records: HashMap::new(),
+        };
+        assert!(find_by_accessory_id(&[item], "18:E2:7F:FE:8D:24").is_some());
     }
 
     #[test]

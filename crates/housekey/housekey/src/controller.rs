@@ -149,16 +149,43 @@ impl Controller {
         Ok(())
     }
 
-    pub async fn read_accessories(&self, alias: &str) -> Result<Vec<Accessory>, ControllerError> {
+    pub async fn read_accessories(&mut self, alias: &str) -> Result<Vec<Accessory>, ControllerError> {
+        self.read_accessories_with_discovered(alias, &[])
+            .await
+            .map(|(accessories, _)| accessories)
+    }
+
+    async fn read_accessories_with_discovered(
+        &mut self,
+        alias: &str,
+        discovered: &[DiscoveredAccessory],
+    ) -> Result<(Vec<Accessory>, bool), ControllerError> {
         let device = self
             .paired
             .get(alias)
-            .ok_or_else(|| ControllerError::NotPaired(alias.to_string()))?;
-        let host = device
-            .host
-            .clone()
-            .ok_or_else(|| ControllerError::NotPaired(alias.to_string()))?;
-        let port = device.port.unwrap_or(51826);
+            .ok_or_else(|| ControllerError::NotPaired(alias.to_string()))?
+            .clone();
+
+        let (host, port) = resolve_endpoint(&device, discovered).ok_or_else(|| {
+            ControllerError::NotPaired(format!(
+                "{alias}: accessory not found via mDNS and no stored host"
+            ))
+        })?;
+        let mut host_updated = false;
+        if Some(host.as_str()) != device.host.as_deref() || device.port != Some(port) {
+            tracing::info!(
+                alias,
+                old_host = ?device.host,
+                new_host = %host,
+                port,
+                "resolved HomeKit accessory address"
+            );
+            if let Some(entry) = self.paired.get_mut(alias) {
+                entry.host = Some(host.clone());
+                entry.port = Some(port);
+            }
+            host_updated = true;
+        }
 
         let accessory_ltpk = parse_hex32(&device.accessory_ltpk)?;
         let controller_ltsk = parse_hex32(&device.controller_ltsk)?;
@@ -189,18 +216,38 @@ impl Controller {
         )
         .map_err(|e| crate::transport::TransportError::InvalidResponse(e.to_string()))?;
 
-        Ok(accessories)
+        Ok((accessories, host_updated))
     }
 
-    pub async fn read_all_accessories(&self) -> Result<Vec<(String, Vec<Accessory>)>, ControllerError> {
+    pub async fn read_all_accessories(
+        &mut self,
+    ) -> Result<Vec<(String, Vec<Accessory>)>, ControllerError> {
         if self.paired.is_empty() {
             return Err(ControllerError::NoPairings);
         }
+
+        let discovered = match discovery::discover(discovery::DISCOVER_TIMEOUT_SECS).await {
+            Ok(found) => found,
+            Err(e) => {
+                tracing::warn!(error = %e, "mDNS browse failed; using stored accessory addresses");
+                Vec::new()
+            }
+        };
+
         let mut out = Vec::new();
+        let mut store_dirty = false;
         for alias in self.paired.keys().cloned().collect::<Vec<_>>() {
-            match self.read_accessories(&alias).await {
-                Ok(accessories) => out.push((alias, accessories)),
+            match self.read_accessories_with_discovered(&alias, &discovered).await {
+                Ok((accessories, host_updated)) => {
+                    store_dirty |= host_updated;
+                    out.push((alias, accessories));
+                }
                 Err(e) => tracing::warn!(alias = %alias, error = %e, "homekit read failed"),
+            }
+        }
+        if store_dirty {
+            if let Err(e) = self.save() {
+                tracing::warn!(error = %e, "failed to persist updated HomeKit accessory addresses");
             }
         }
         if out.is_empty() {
@@ -221,6 +268,17 @@ impl Controller {
     pub fn insert_paired(&mut self, device: PairedDevice) {
         self.paired.insert(device.alias.clone(), device);
     }
+}
+
+fn resolve_endpoint(
+    device: &PairedDevice,
+    discovered: &[DiscoveredAccessory],
+) -> Option<(String, u16)> {
+    if let Some(found) = discovery::find_by_accessory_id(discovered, &device.accessory_id) {
+        return Some((found.addr.to_string(), found.port));
+    }
+    let host = device.host.clone()?;
+    Some((host, device.port.unwrap_or(51826)))
 }
 
 fn random_pairing_id() -> String {

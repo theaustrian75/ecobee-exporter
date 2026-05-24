@@ -182,6 +182,8 @@ Use `--dry-run` to preview imports without writing. When HA titles do not contai
 
 This reuses Home Assistant's HomeKit controller identity. Avoid polling the same thermostat from HA and this exporter at the same time — concurrent connections can conflict.
 
+Imported `AccessoryIP` values are often HA's internal Docker addresses (e.g. `172.30.x.x`) and are not reachable from the exporter. The exporter re-resolves each thermostat via mDNS on every poll and updates `homekit-pairings.json` when it finds a LAN address. Run the exporter on the same network as the ecobees (Docker: use `network_mode: host` in the HomeKit compose profile).
+
 **3. Configure**
 
 ```toml

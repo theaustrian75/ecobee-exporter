@@ -40,7 +40,7 @@ impl HomeKitProvider {
 #[async_trait]
 impl ThermostatProvider for HomeKitProvider {
     async fn fetch(&self) -> Result<Vec<Thermostat>, ProviderError> {
-        let controller = self.controller.lock().await;
+        let mut controller = self.controller.lock().await;
         let snapshots = controller
             .read_all_accessories()
             .await

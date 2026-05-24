@@ -1,6 +1,7 @@
 //! HAP-over-IP HTTP transport (plain TLV during pairing, encrypted JSON afterward).
 
 use std::net::SocketAddr;
+use std::time::Duration;
 
 use bytes::{BufMut, BytesMut};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -9,6 +10,9 @@ use tokio::net::TcpStream;
 use crate::crypto::session::EncryptedSession;
 
 use super::TransportError;
+
+/// Maximum time to wait for a TCP connection to an accessory.
+pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct IpConnection {
     stream: TcpStream,
@@ -21,8 +25,14 @@ impl IpConnection {
         let addr: SocketAddr = format!("{host}:{port}").parse().map_err(
             |e: std::net::AddrParseError| TransportError::ConnectionFailed(e.to_string()),
         )?;
-        let stream = TcpStream::connect(addr)
+        let stream = tokio::time::timeout(CONNECT_TIMEOUT, TcpStream::connect(addr))
             .await
+            .map_err(|_| {
+                TransportError::ConnectionFailed(format!(
+                    "connect to {addr} timed out after {}s",
+                    CONNECT_TIMEOUT.as_secs()
+                ))
+            })?
             .map_err(|e| TransportError::ConnectionFailed(e.to_string()))?;
         Ok(Self {
             stream,
