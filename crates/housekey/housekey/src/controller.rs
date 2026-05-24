@@ -96,7 +96,7 @@ impl Controller {
     }
 
     pub async fn discover(&self) -> Result<Vec<DiscoveredAccessory>, ControllerError> {
-        Ok(discovery::discover(5).await?)
+        Ok(discovery::discover(discovery::DISCOVER_TIMEOUT_SECS).await?)
     }
 
     pub async fn pair(
@@ -108,6 +108,13 @@ impl Controller {
         if self.paired.contains_key(alias) {
             return Err(ControllerError::AlreadyPaired(alias.to_string()));
         }
+
+        tracing::info!(
+            accessory = accessory.display_name(),
+            addr = %accessory.socket_addr(),
+            alias,
+            "starting HomeKit pair-setup"
+        );
 
         let controller_pairing_id = random_pairing_id();
         let mut conn = IpConnection::connect(&accessory.addr.to_string(), accessory.port).await?;
@@ -138,6 +145,7 @@ impl Controller {
             },
         );
         self.save()?;
+        tracing::info!(alias, "HomeKit pair-setup complete");
         Ok(())
     }
 

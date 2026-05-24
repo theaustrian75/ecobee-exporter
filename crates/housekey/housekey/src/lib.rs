@@ -7,4 +7,4 @@ pub mod tlv;
 pub mod transport;
 
 pub use controller::{Controller, ControllerError, PairedDevice};
-pub use discovery::{discover, DiscoveredAccessory, DiscoveryError};
+pub use discovery::{discover, AccessoryCategory, DiscoveredAccessory, DiscoveryError, DISCOVER_TIMEOUT_SECS};

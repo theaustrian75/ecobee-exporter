@@ -1311,7 +1311,6 @@ dependencies = [
  "fastrand",
  "flume",
  "if-addrs",
- "log",
  "polling",
  "socket2 0.5.10",
 ]

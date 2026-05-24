@@ -1,14 +1,32 @@
-# Copy and adjust as needed, then:
-#   docker compose -f docker-compose.example.yml up -d
+# Copy and adjust as needed.
 #
+# ---------------------------------------------------------------------------
+# Beehive backend (cloud API — default)
+# ---------------------------------------------------------------------------
 # One-time Auth0 login (interactive; writes refresh token into the volume):
 #   docker compose -f docker-compose.example.yml run --rm -it \
 #     --entrypoint ecobee-login ecobee-exporter
 #
 # Open the printed URL in a browser, complete MFA, copy the full callback URL
-# from the address bar, and paste it at the prompt. Then start the exporter.
+# from the address bar, and paste it at the prompt. Then start the exporter:
+#   docker compose -f docker-compose.example.yml up -d
+#
+# ---------------------------------------------------------------------------
+# HomeKit backend (local LAN)
+# ---------------------------------------------------------------------------
+# Pair on the host first (mDNS discovery needs host networking):
+#   cargo run --bin ecobee-homekit-pair -- --discover-only
+#   cargo run --bin ecobee-homekit-pair -- \
+#     --device-id AA:BB:CC:DD:EE:FF --code 12345678 --alias ecobee \
+#     --pairing-file ./homekit-pairings.json
+#
+# Start the HomeKit exporter (uses host networking to reach the thermostat):
+#   docker compose -f docker-compose.example.yml --profile homekit up -d
+#
+# Metrics: http://localhost:9098/metrics
 
 services:
+  # Beehive (cloud). Started by default: `docker compose up -d`
   ecobee-exporter:
     image: ghcr.io/theaustrian75/ecobee-exporter:latest
     restart: unless-stopped
@@ -17,8 +35,25 @@ services:
     volumes:
       - ecobee-exporter-data:/var/lib/ecobee-exporter
     environment:
+      - ECOBEE_PROVIDER=beehive
       - ECOBEE_STATE_FILE=/var/lib/ecobee-exporter/state.json
       # IANA timezone for container logs (tzdata is installed in the image).
+      - TZ=America/New_York
+      - ECOBEE_LISTEN_ADDR=0.0.0.0:9098
+      - ECOBEE_POLL_INTERVAL=3m
+
+  # HomeKit (local LAN). Requires `--profile homekit`.
+  ecobee-exporter-homekit:
+    profiles: [homekit]
+    image: ghcr.io/theaustrian75/ecobee-exporter:latest
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      # Create via `ecobee-homekit-pair` on the host before starting.
+      - ./homekit-pairings.json:/var/lib/ecobee-exporter/homekit-pairings.json:ro
+    environment:
+      - ECOBEE_PROVIDER=homekit
+      - ECOBEE_HOMEKIT__PAIRING_FILE=/var/lib/ecobee-exporter/homekit-pairings.json
       - TZ=America/New_York
       - ECOBEE_LISTEN_ADDR=0.0.0.0:9098
       - ECOBEE_POLL_INTERVAL=3m

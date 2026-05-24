@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 use std::net::IpAddr;
 
 use thiserror::Error;
@@ -90,9 +91,82 @@ impl AccessoryCategory {
     }
 }
 
+impl fmt::Display for AccessoryCategory {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let label = match self {
+            Self::Other => "Other",
+            Self::Bridge => "Bridge",
+            Self::Fan => "Fan",
+            Self::GarageDoorOpener => "Garage",
+            Self::Lightbulb => "Light",
+            Self::DoorLock => "Lock",
+            Self::Outlet => "Outlet",
+            Self::Switch => "Switch",
+            Self::Thermostat => "Thermostat",
+            Self::Sensor => "Sensor",
+            Self::SecuritySystem => "Security",
+            Self::Door => "Door",
+            Self::Window => "Window",
+            Self::WindowCovering => "Covering",
+            Self::ProgrammableSwitch => "Switch",
+            Self::IpCamera => "Camera",
+            Self::VideoDoorbell => "Doorbell",
+            Self::AirPurifier => "Purifier",
+            Self::Heater => "Heater",
+            Self::AirConditioner => "AC",
+            Self::Humidifier => "Humidifier",
+            Self::Dehumidifier => "Dehumidifier",
+            Self::Sprinkler => "Sprinkler",
+            Self::Faucet => "Faucet",
+            Self::ShowerSystem => "Shower",
+            Self::Router => "Router",
+        };
+        f.write_str(label)
+    }
+}
+
+impl DiscoveredAccessory {
+    /// Short hostname (no trailing dot or `.local`).
+    pub fn display_name(&self) -> &str {
+        let host = self.name.trim_end_matches('.');
+        host.strip_suffix(".local").unwrap_or(host)
+    }
+
+    /// `host:port`, bracketed when `host` is IPv6.
+    pub fn socket_addr(&self) -> String {
+        format_socket_addr(self.addr, self.port)
+    }
+
+    /// True when the accessory reports an ecobee model over HAP.
+    pub fn is_ecobee(&self) -> bool {
+        self.model.to_ascii_lowercase().contains("ecobee")
+    }
+}
+
+fn format_socket_addr(addr: IpAddr, port: u16) -> String {
+    match addr {
+        IpAddr::V4(v4) => format!("{v4}:{port}"),
+        IpAddr::V6(v6) => format!("[{v6}]:{port}"),
+    }
+}
+
+fn pick_address(addrs: &std::collections::HashSet<IpAddr>) -> Option<IpAddr> {
+    addrs
+        .iter()
+        .find(|addr| addr.is_ipv4())
+        .or_else(|| addrs.iter().next())
+        .copied()
+}
+
+/// Default mDNS browse duration used by [`Controller::discover`].
+pub const DISCOVER_TIMEOUT_SECS: u64 = 5;
+
 /// Browse `_hap._tcp` for HomeKit accessories on the LAN.
 pub async fn discover(timeout_secs: u64) -> Result<Vec<DiscoveredAccessory>, DiscoveryError> {
     use mdns_sd::{ServiceDaemon, ServiceEvent};
+
+    let timeout_secs = timeout_secs.max(1);
+    tracing::info!(timeout_secs, "browsing _hap._tcp.local");
 
     let mdns = ServiceDaemon::new().map_err(|e| DiscoveryError::BrowseFailed(e.to_string()))?;
     let receiver = mdns
@@ -101,7 +175,7 @@ pub async fn discover(timeout_secs: u64) -> Result<Vec<DiscoveredAccessory>, Dis
 
     let mut found: HashMap<String, DiscoveredAccessory> = HashMap::new();
     let deadline =
-        tokio::time::Instant::now() + std::time::Duration::from_secs(timeout_secs.max(1));
+        tokio::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
 
     while tokio::time::Instant::now() < deadline {
         let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
@@ -112,9 +186,18 @@ pub async fn discover(timeout_secs: u64) -> Result<Vec<DiscoveredAccessory>, Dis
                     .unwrap_or("")
                     .to_string();
                 if id.is_empty() {
+                    tracing::debug!(
+                        hostname = info.get_hostname(),
+                        "skipping HAP service without id"
+                    );
                     continue;
                 }
-                let Some(addr) = info.get_addresses().iter().next().copied() else {
+                let Some(addr) = pick_address(info.get_addresses()) else {
+                    tracing::debug!(
+                        hostname = info.get_hostname(),
+                        id = %id,
+                        "skipping HAP service without address"
+                    );
                     continue;
                 };
                 let category = info
@@ -128,11 +211,9 @@ pub async fn discover(timeout_secs: u64) -> Result<Vec<DiscoveredAccessory>, Dis
                     .map(|prop| (prop.key().to_string(), prop.val_str().to_string()))
                     .collect();
 
-                found.insert(
-                    id.clone(),
-                    DiscoveredAccessory {
-                        name: info.get_fullname().to_string(),
-                        id,
+                let accessory = DiscoveredAccessory {
+                        name: info.get_hostname().to_string(),
+                        id: id.clone(),
                         addr,
                         port: info.get_port(),
                         model: info
@@ -153,14 +234,78 @@ pub async fn discover(timeout_secs: u64) -> Result<Vec<DiscoveredAccessory>, Dis
                             .unwrap_or(0),
                         category,
                         txt_records,
-                    },
+                    };
+                tracing::debug!(
+                    name = accessory.display_name(),
+                    id = %accessory.id,
+                    addr = %accessory.socket_addr(),
+                    model = %accessory.model,
+                    category = %accessory.category,
+                    "resolved HAP accessory"
                 );
+                found.insert(id, accessory);
             }
-            Ok(Ok(_)) => {}
+            Ok(Ok(other)) => {
+                tracing::trace!(?other, "mDNS event");
+            }
             Ok(Err(e)) => return Err(DiscoveryError::BrowseFailed(e.to_string())),
             Err(_) => break,
         }
     }
 
+    tracing::info!(accessories = found.len(), "mDNS browse complete");
+
     Ok(found.into_values().collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::{Ipv4Addr, Ipv6Addr};
+
+    #[test]
+    fn format_socket_ipv4() {
+        let addr = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 10));
+        assert_eq!(format_socket_addr(addr, 51826), "192.168.1.10:51826");
+    }
+
+    #[test]
+    fn format_socket_ipv6() {
+        let addr = IpAddr::V6(Ipv6Addr::new(
+            0x2601, 0x8c, 0xc200, 0x9f12, 0x4661, 0x32ff, 0xfe12, 0x9a0f,
+        ));
+        assert_eq!(
+            format_socket_addr(addr, 55118),
+            "[2601:8c:c200:9f12:4661:32ff:fe12:9a0f]:55118"
+        );
+    }
+
+    #[test]
+    fn pick_address_prefers_ipv4() {
+        use std::collections::HashSet;
+        let mut addrs = HashSet::new();
+        addrs.insert(IpAddr::V6(Ipv6Addr::LOCALHOST));
+        addrs.insert(IpAddr::V4(Ipv4Addr::new(172, 30, 0, 102)));
+        assert_eq!(
+            pick_address(&addrs),
+            Some(IpAddr::V4(Ipv4Addr::new(172, 30, 0, 102)))
+        );
+    }
+
+    #[test]
+    fn is_ecobee_matches_model_string() {
+        let item = DiscoveredAccessory {
+            name: "Living-Room.local".into(),
+            id: "18:E2:7F:FE:8D:24".into(),
+            addr: IpAddr::V4(Ipv4Addr::new(172, 30, 0, 102)),
+            port: 55118,
+            model: "ecobee3 lite".into(),
+            state_number: 1,
+            feature_flags: 0,
+            status_flags: 0,
+            category: AccessoryCategory::Thermostat,
+            txt_records: HashMap::new(),
+        };
+        assert!(item.is_ecobee());
+    }
 }

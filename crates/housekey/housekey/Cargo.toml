@@ -27,8 +27,8 @@ rand = "0.8"
 # incompatible with Apple's variant (padding/proof differences)
 num-bigint = { version = "0.4", features = ["rand"] }
 
-# mDNS discovery
-mdns-sd = "0.12"
+# mDNS discovery (`async` required; omit default `logging` — noisy on busy LANs)
+mdns-sd = { version = "0.12", default-features = false, features = ["async"] }
 
 # HTTP (no OpenSSL)
 hyper = { version = "1", features = ["client", "http1"] }
