@@ -528,10 +528,10 @@ CI runs on every push and pull request via
 | `docker` | Builds the Alpine image; pushes to GHCR on branch pushes and tags         |
 
 
-After the first push to `master`:
+After the first push to `main`:
 
 ```sh
-docker pull ghcr.io/OWNER/ecobee-exporter:master
+docker pull ghcr.io/OWNER/ecobee-exporter:main
 ```
 
 Tagged releases also publish `:latest`:
