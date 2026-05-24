@@ -10,7 +10,7 @@
 //! the config file with `chmod 600`, not env vars, so they don't leak into
 //! process listings or systemd journal output.
 
-use std::{net::SocketAddr, path::PathBuf, time::Duration};
+use std::{net::SocketAddr, path::PathBuf, str::FromStr, time::Duration};
 
 use figment::{
     Figment,
@@ -24,6 +24,20 @@ pub enum ProviderKind {
     #[default]
     Beehive,
     Homekit,
+}
+
+impl FromStr for ProviderKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "beehive" => Ok(Self::Beehive),
+            "homekit" => Ok(Self::Homekit),
+            other => Err(format!(
+                "invalid provider {other:?}; expected `beehive` or `homekit`"
+            )),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -172,6 +186,19 @@ mod tests {
     fn homekit_config_defaults() {
         let cfg = HomeKitConfig::default();
         assert_eq!(cfg.pairing_file, PathBuf::from("./homekit-pairings.json"));
+    }
+
+    #[test]
+    fn provider_parses_from_str() {
+        assert_eq!(
+            "beehive".parse::<ProviderKind>().unwrap(),
+            ProviderKind::Beehive
+        );
+        assert_eq!(
+            "homekit".parse::<ProviderKind>().unwrap(),
+            ProviderKind::Homekit
+        );
+        assert!("cloud".parse::<ProviderKind>().is_err());
     }
 
     #[test]

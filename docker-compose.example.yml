@@ -1,5 +1,8 @@
 # Copy and adjust as needed.
 #
+# Backend: set ECOBEE_PROVIDER=beehive (default) or homekit.
+# CLI equivalent: cargo run -- --provider homekit
+#
 # ---------------------------------------------------------------------------
 # Beehive backend (cloud API — default)
 # ---------------------------------------------------------------------------

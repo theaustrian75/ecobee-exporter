@@ -15,7 +15,8 @@ state_file = "./ecobee-exporter.state.json"
 demo = false
 
 # Data source: "beehive" (cloud Auth0 API, default) or "homekit" (local
-# HomeKit HAP — see README "HomeKit backend").
+# HomeKit HAP — see README "HomeKit backend"). Same values work as
+# `--provider` on the CLI or `ECOBEE_PROVIDER` in the environment.
 # provider = "homekit"
 
 [beehive]

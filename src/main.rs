@@ -29,6 +29,11 @@ struct Cli {
     /// Force demo mode regardless of config. Equivalent to `demo = true`.
     #[arg(long)]
     demo: bool,
+
+    /// Data source: `beehive` (cloud API) or `homekit` (local LAN). Overrides
+    /// config; `ECOBEE_PROVIDER` env var also works without this flag.
+    #[arg(long, value_parser = clap::value_parser!(ProviderKind))]
+    provider: Option<ProviderKind>,
 }
 
 #[tokio::main]
@@ -39,6 +44,9 @@ async fn main() -> anyhow::Result<()> {
     let mut cfg = Config::load(cli.config.as_deref()).context("loading config")?;
     if cli.demo {
         cfg.demo = true;
+    }
+    if let Some(provider) = cli.provider {
+        cfg.provider = provider;
     }
 
     tracing::info!(

@@ -81,6 +81,7 @@ Or via environment:
 
 ```sh
 export ECOBEE_PROVIDER=beehive   # optional; this is the default
+# or: cargo run --release -- --provider beehive
 ```
 
 **3. Run the exporter**
@@ -171,11 +172,12 @@ provider = "homekit"
 pairing_file = "./homekit-pairings.json"
 ```
 
-Or via environment:
+Or via environment or CLI flag:
 
 ```sh
 export ECOBEE_PROVIDER=homekit
 export ECOBEE_HOMEKIT__PAIRING_FILE=./homekit-pairings.json
+# or: cargo run --release -- --provider homekit
 ```
 
 **4. Run the exporter**
@@ -212,7 +214,7 @@ Layered, lowest-to-highest precedence:
 | `poll_interval`         | `3m`                           | Floored to 60s.                                                   |
 | `state_file`            | `./ecobee-exporter.state.json` | Beehive refresh tokens (`ecobee-login`).                          |
 | `demo`                  | `false`                        | Serve canned data; no upstream calls.                             |
-| `provider`              | `beehive`                      | `beehive` (cloud) or `homekit` (local LAN).                       |
+| `provider`              | `beehive`                      | `beehive` (cloud) or `homekit` (local LAN). Also `--provider` or `ECOBEE_PROVIDER`. |
 | `homekit.pairing_file`  | `./homekit-pairings.json`      | HomeKit keys from `ecobee-homekit-pair`. `chmod 600` recommended. |
 | `beehive.endpoint`      | `https://api.ecobee.com/1`     | Data API base URL.                                                |
 | `beehive.user_agent`    | `ecobee-exporter/0.1.0`        | Override to mimic the mobile app if needed.                       |
