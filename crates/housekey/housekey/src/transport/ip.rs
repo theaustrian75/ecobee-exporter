@@ -25,9 +25,12 @@ pub struct IpConnection {
 
 impl IpConnection {
     pub async fn connect(host: &str, port: u16) -> Result<Self, TransportError> {
-        let addr: SocketAddr = format!("{host}:{port}").parse().map_err(
-            |e: std::net::AddrParseError| TransportError::ConnectionFailed(e.to_string()),
-        )?;
+        let addr: SocketAddr =
+            format!("{host}:{port}")
+                .parse()
+                .map_err(|e: std::net::AddrParseError| {
+                    TransportError::ConnectionFailed(e.to_string())
+                })?;
         tracing::debug!(%addr, "TCP connect");
         let stream = tokio::time::timeout(CONNECT_TIMEOUT, TcpStream::connect(addr))
             .await
@@ -83,8 +86,13 @@ impl IpConnection {
             "GET response (pre-decrypt)"
         );
         let plaintext = self.decrypt_body(&body)?;
-        tracing::debug!(path, plaintext_bytes = plaintext.len(), "GET response decrypted");
-        serde_json::from_slice(&plaintext).map_err(|e| TransportError::InvalidResponse(e.to_string()))
+        tracing::debug!(
+            path,
+            plaintext_bytes = plaintext.len(),
+            "GET response decrypted"
+        );
+        serde_json::from_slice(&plaintext)
+            .map_err(|e| TransportError::InvalidResponse(e.to_string()))
     }
 
     async fn write_request(
@@ -134,7 +142,9 @@ impl IpConnection {
         let header_end = raw
             .windows(4)
             .position(|w| w == b"\r\n\r\n")
-            .ok_or_else(|| TransportError::InvalidResponse("missing HTTP header terminator".into()))?;
+            .ok_or_else(|| {
+                TransportError::InvalidResponse("missing HTTP header terminator".into())
+            })?;
         let headers = &raw[..header_end];
         let body = &raw[header_end + 4..];
 

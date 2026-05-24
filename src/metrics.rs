@@ -221,7 +221,10 @@ impl Metrics {
             FORECAST_LABELS,
         )?;
         let forecast_dewpoint = GaugeVec::new(
-            Opts::new("ecobee_forecast_dewpoint", "outdoor / forecast dewpoint, degrees"),
+            Opts::new(
+                "ecobee_forecast_dewpoint",
+                "outdoor / forecast dewpoint, degrees",
+            ),
             FORECAST_LABELS,
         )?;
         let forecast_wind_speed_mph = GaugeVec::new(

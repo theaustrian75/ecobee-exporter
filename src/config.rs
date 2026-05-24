@@ -322,7 +322,10 @@ mod tests {
             "homeassistant".parse::<ProviderKind>().unwrap(),
             ProviderKind::Homeassistant
         );
-        assert_eq!("ha".parse::<ProviderKind>().unwrap(), ProviderKind::Homeassistant);
+        assert_eq!(
+            "ha".parse::<ProviderKind>().unwrap(),
+            ProviderKind::Homeassistant
+        );
         assert!("cloud".parse::<ProviderKind>().is_err());
     }
 
@@ -370,12 +373,18 @@ pairing_file = "/var/lib/ecobee/pairings.json"
         assert_eq!(cfg.listen_addr, "127.0.0.1:9099".parse().unwrap());
         assert_eq!(cfg.poll_interval, Duration::from_mins(5));
         assert_eq!(cfg.provider, ProviderKind::Homekit);
-        assert_eq!(cfg.homekit.pairing_file, PathBuf::from("/tmp/pairings.json"));
+        assert_eq!(
+            cfg.homekit.pairing_file,
+            PathBuf::from("/tmp/pairings.json")
+        );
         assert_eq!(
             cfg.beehive.endpoint.as_deref(),
             Some("https://example.test/1")
         );
-        assert_eq!(cfg.beehive.extra_headers, vec![("x-test".into(), "1".into())]);
+        assert_eq!(
+            cfg.beehive.extra_headers,
+            vec![("x-test".into(), "1".into())]
+        );
     }
 
     #[test]

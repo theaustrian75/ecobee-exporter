@@ -4,7 +4,10 @@ use std::sync::Arc;
 
 use ecobee_exporter::{
     collector::Collector,
-    homeassistant::{client::{DeviceGraph, HaState}, translate::translate_states},
+    homeassistant::{
+        client::{DeviceGraph, HaState},
+        translate::translate_states,
+    },
     metrics::Metrics,
     provider::{FakeProvider, ThermostatProvider},
 };

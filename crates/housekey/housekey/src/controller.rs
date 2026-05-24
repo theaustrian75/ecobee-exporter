@@ -152,7 +152,10 @@ impl Controller {
         Ok(())
     }
 
-    pub async fn read_accessories(&mut self, alias: &str) -> Result<Vec<Accessory>, ControllerError> {
+    pub async fn read_accessories(
+        &mut self,
+        alias: &str,
+    ) -> Result<Vec<Accessory>, ControllerError> {
         self.read_accessories_with_discovered(alias, &[])
             .await
             .map(|(accessories, _)| accessories)
@@ -255,15 +258,16 @@ impl Controller {
             elapsed_ms = get_started.elapsed().as_millis() as u64,
             "GET /accessories ok"
         );
-        let accessories: Vec<Accessory> = serde_json::from_value(
-            json.get("accessories")
-                .cloned()
-                .ok_or_else(|| {
-                    crate::transport::TransportError::InvalidResponse("missing accessories".into())
-                })?,
-        )
-        .map_err(|e| crate::transport::TransportError::InvalidResponse(e.to_string()))?;
-        tracing::info!(alias, accessory_count = accessories.len(), "verify complete");
+        let accessories: Vec<Accessory> =
+            serde_json::from_value(json.get("accessories").cloned().ok_or_else(|| {
+                crate::transport::TransportError::InvalidResponse("missing accessories".into())
+            })?)
+            .map_err(|e| crate::transport::TransportError::InvalidResponse(e.to_string()))?;
+        tracing::info!(
+            alias,
+            accessory_count = accessories.len(),
+            "verify complete"
+        );
 
         Ok((accessories, host_updated))
     }
@@ -295,12 +299,7 @@ impl Controller {
         for alias in self.paired.keys().cloned().collect::<Vec<_>>() {
             let alias_for_log = alias.clone();
             let read = self.read_accessories_with_discovered(&alias, &discovered);
-            match tokio::time::timeout(
-                Duration::from_secs(30),
-                read,
-            )
-            .await
-            {
+            match tokio::time::timeout(Duration::from_secs(30), read).await {
                 Ok(Ok((accessories, host_updated))) => {
                     store_dirty |= host_updated;
                     out.push((alias, accessories));
@@ -369,28 +368,36 @@ fn random_pairing_id() -> String {
     rand::thread_rng().fill_bytes(&mut bytes);
     format!(
         "{:02X}{:02X}{:02X}{:02X}-{:02X}{:02X}-{:02X}{:02X}-{:02X}{:02X}-{:02X}{:02X}{:02X}{:02X}{:02X}{:02X}",
-        bytes[0], bytes[1], bytes[2], bytes[3],
-        bytes[4], bytes[5],
-        bytes[6], bytes[7],
-        bytes[8], bytes[9],
-        bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15],
+        bytes[0],
+        bytes[1],
+        bytes[2],
+        bytes[3],
+        bytes[4],
+        bytes[5],
+        bytes[6],
+        bytes[7],
+        bytes[8],
+        bytes[9],
+        bytes[10],
+        bytes[11],
+        bytes[12],
+        bytes[13],
+        bytes[14],
+        bytes[15],
     )
 }
 
 fn parse_hex32(hex_str: &str) -> Result<[u8; 32], ControllerError> {
     let bytes = hex::decode(hex_str).map_err(|e| ControllerError::StoreError(e.to_string()))?;
-    bytes
-        .try_into()
-        .map_err(|v: Vec<u8>| ControllerError::StoreError(format!("expected 32 bytes, got {}", v.len())))
+    bytes.try_into().map_err(|v: Vec<u8>| {
+        ControllerError::StoreError(format!("expected 32 bytes, got {}", v.len()))
+    })
 }
 
 // hex encode/decode helper crate
 mod hex {
     pub fn encode(data: impl AsRef<[u8]>) -> String {
-        data.as_ref()
-            .iter()
-            .map(|b| format!("{b:02x}"))
-            .collect()
+        data.as_ref().iter().map(|b| format!("{b:02x}")).collect()
     }
 
     pub fn decode(s: &str) -> Result<Vec<u8>, String> {

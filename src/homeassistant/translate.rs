@@ -16,10 +16,7 @@ pub fn translate_states(
     weather_entities: &[String],
     device_graph: &DeviceGraph,
 ) -> Vec<Thermostat> {
-    let by_id: HashMap<&str, &HaState> = states
-        .iter()
-        .map(|s| (s.entity_id.as_str(), s))
-        .collect();
+    let by_id: HashMap<&str, &HaState> = states.iter().map(|s| (s.entity_id.as_str(), s)).collect();
 
     let climates: Vec<&HaState> = if climate_entities.is_empty() {
         states
@@ -183,8 +180,8 @@ fn is_climate_sensor_entity(entity_id: &str) -> bool {
 }
 
 fn sensor_from_state(state: &HaState) -> Option<RemoteSensor> {
-    let name = attr_string(&state.attributes, "friendly_name")
-        .unwrap_or_else(|| state.entity_id.clone());
+    let name =
+        attr_string(&state.attributes, "friendly_name").unwrap_or_else(|| state.entity_id.clone());
     let device_class = attr_string(&state.attributes, "device_class");
     let unit = state
         .attributes
@@ -367,9 +364,8 @@ fn translate_weather(state: &HaState) -> Weather {
             .or_else(|| attr_f64(attrs, "wind_gust"))
             .map(|w| wind_to_mph(w, wind_unit)),
         wind_bearing_degrees: attr_f64(attrs, "wind_bearing").map(round_i32),
-        visibility_meters: attr_f64(attrs, "visibility").map(|v| {
-            visibility_to_meters(v, visibility_unit)
-        }),
+        visibility_meters: attr_f64(attrs, "visibility")
+            .map(|v| visibility_to_meters(v, visibility_unit)),
         probability_of_precipitation: attr_f64(attrs, "precipitation_probability")
             .or_else(|| forecast.and_then(|day| attr_f64(day, "precipitation_probability")))
             .map(round_i32),
@@ -466,7 +462,10 @@ fn temp_to_tenths(temp: f64, unit: &str) -> i32 {
     } else {
         temp
     };
-    #[allow(clippy::cast_possible_truncation, reason = "thermostat temps fit i32 tenths")]
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "thermostat temps fit i32 tenths"
+    )]
     {
         (fahrenheit * 10.0).round() as i32
     }
@@ -480,7 +479,10 @@ fn humidity_percent(h: f64) -> i32 {
 }
 
 fn round_i32(v: f64) -> i32 {
-    #[allow(clippy::cast_possible_truncation, reason = "weather values fit i32 after rounding")]
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "weather values fit i32 after rounding"
+    )]
     {
         v.round() as i32
     }
@@ -550,10 +552,7 @@ fn entity_stem(entity_id: &str) -> Option<&str> {
 }
 
 fn attr_string(attrs: &Value, key: &str) -> Option<String> {
-    attrs
-        .get(key)
-        .and_then(|v| v.as_str())
-        .map(str::to_string)
+    attrs.get(key).and_then(|v| v.as_str()).map(str::to_string)
 }
 
 fn attr_f64(attrs: &Value, key: &str) -> Option<f64> {
@@ -667,7 +666,9 @@ mod tests {
         assert_eq!(t.settings.hvac_mode, HvacMode::Heat);
         assert_eq!(t.equipment_running, vec!["heatPump", "fan"]);
         assert_eq!(
-            t.program.as_ref().and_then(|p| p.current_climate_ref.as_deref()),
+            t.program
+                .as_ref()
+                .and_then(|p| p.current_climate_ref.as_deref()),
             Some("home")
         );
         assert_eq!(t.sensors.len(), 2);
@@ -689,10 +690,23 @@ mod tests {
     #[test]
     fn honors_explicit_climate_entity_filter() {
         let states = vec![
-            state("climate.one", "off", serde_json::json!({"current_temperature": 70.0})),
-            state("climate.two", "off", serde_json::json!({"current_temperature": 71.0})),
+            state(
+                "climate.one",
+                "off",
+                serde_json::json!({"current_temperature": 70.0}),
+            ),
+            state(
+                "climate.two",
+                "off",
+                serde_json::json!({"current_temperature": 71.0}),
+            ),
         ];
-        let thermostats = translate_states(&states, &["climate.two".into()], &[], &DeviceGraph::default());
+        let thermostats = translate_states(
+            &states,
+            &["climate.two".into()],
+            &[],
+            &DeviceGraph::default(),
+        );
         assert_eq!(thermostats.len(), 1);
         assert_eq!(thermostats[0].identifier, "climate.two");
     }
@@ -711,7 +725,9 @@ mod tests {
                 "temperature_unit": "°F"
             }),
         )];
-        let t = translate_states(&states, &[], &[], &DeviceGraph::default()).pop().expect("thermostat");
+        let t = translate_states(&states, &[], &[], &DeviceGraph::default())
+            .pop()
+            .expect("thermostat");
         assert_eq!(t.settings.hvac_mode, HvacMode::Cool);
         assert_eq!(t.equipment_running, vec!["compCool1"]);
     }

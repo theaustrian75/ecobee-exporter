@@ -49,23 +49,17 @@ struct DeviceGraphPayload {
 
 impl DeviceGraph {
     pub fn parse(entity_rows_json: &str, device_rows_json: &str) -> Result<Self, ProviderError> {
-        let entity_rows: Vec<EntityDeviceRow> =
-            serde_json::from_str(entity_rows_json.trim()).map_err(|e| {
-                ProviderError::Upstream(format!("device graph entity JSON: {e}"))
-            })?;
-        let device_rows: Vec<DeviceRow> =
-            serde_json::from_str(device_rows_json.trim()).map_err(|e| {
-                ProviderError::Upstream(format!("device graph device JSON: {e}"))
-            })?;
+        let entity_rows: Vec<EntityDeviceRow> = serde_json::from_str(entity_rows_json.trim())
+            .map_err(|e| ProviderError::Upstream(format!("device graph entity JSON: {e}")))?;
+        let device_rows: Vec<DeviceRow> = serde_json::from_str(device_rows_json.trim())
+            .map_err(|e| ProviderError::Upstream(format!("device graph device JSON: {e}")))?;
 
         Ok(Self::from_rows(entity_rows, device_rows))
     }
 
     pub fn parse_payload(json: &str) -> Result<Self, ProviderError> {
-        let payload: DeviceGraphPayload =
-            serde_json::from_str(json.trim()).map_err(|e| {
-                ProviderError::Upstream(format!("device graph JSON: {e}"))
-            })?;
+        let payload: DeviceGraphPayload = serde_json::from_str(json.trim())
+            .map_err(|e| ProviderError::Upstream(format!("device graph JSON: {e}")))?;
         Ok(Self::from_rows(payload.entities, payload.devices))
     }
 

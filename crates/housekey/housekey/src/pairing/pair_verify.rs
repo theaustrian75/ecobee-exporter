@@ -53,12 +53,12 @@ impl PairVerify {
         check_state(&tlvs, 0x02)?;
         check_error(&tlvs)?;
 
-        let accessory_session_pk = tlvs
-            .get(&TlvType::PublicKey)
-            .ok_or(PairingError::UnexpectedState {
-                expected: 0x02,
-                got: 0,
-            })?;
+        let accessory_session_pk =
+            tlvs.get(&TlvType::PublicKey)
+                .ok_or(PairingError::UnexpectedState {
+                    expected: 0x02,
+                    got: 0,
+                })?;
         let encrypted = tlvs
             .get(&TlvType::EncryptedData)
             .ok_or(PairingError::UnexpectedState {
@@ -66,13 +66,12 @@ impl PairVerify {
                 got: 0,
             })?;
 
-        let accessory_pk: [u8; 32] = accessory_session_pk
-            .as_slice()
-            .try_into()
-            .map_err(|_| PairingError::Crypto(crate::crypto::CryptoError::InvalidKeyLength {
+        let accessory_pk: [u8; 32] = accessory_session_pk.as_slice().try_into().map_err(|_| {
+            PairingError::Crypto(crate::crypto::CryptoError::InvalidKeyLength {
                 expected: 32,
                 got: accessory_session_pk.len(),
-            }))?;
+            })
+        })?;
 
         let shared = our_secret.diffie_hellman(&X25519PublicKey::from(accessory_pk));
         let session_key = hkdf_derive(
@@ -123,8 +122,8 @@ impl PairVerify {
             self.controller_pairing_id.as_bytes().to_vec(),
         );
         sub_tlvs.insert(TlvType::Signature, ios_sig.to_bytes().to_vec());
-        let encrypted_m3 =
-            hap_encrypt(&session_key, b"PV-Msg03", &tlv::encode(&sub_tlvs)).map_err(PairingError::Crypto)?;
+        let encrypted_m3 = hap_encrypt(&session_key, b"PV-Msg03", &tlv::encode(&sub_tlvs))
+            .map_err(PairingError::Crypto)?;
 
         let mut tlvs = TlvMap::new();
         tlvs.insert(TlvType::State, vec![0x03]);

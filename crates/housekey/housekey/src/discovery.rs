@@ -193,17 +193,13 @@ pub async fn discover(timeout_secs: u64) -> Result<Vec<DiscoveredAccessory>, Dis
         .map_err(|e| DiscoveryError::BrowseFailed(e.to_string()))?;
 
     let mut found: HashMap<String, DiscoveredAccessory> = HashMap::new();
-    let deadline =
-        tokio::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
 
     while tokio::time::Instant::now() < deadline {
         let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
         match tokio::time::timeout(remaining, receiver.recv_async()).await {
             Ok(Ok(ServiceEvent::ServiceResolved(info))) => {
-                let id = info
-                    .get_property_val_str("id")
-                    .unwrap_or("")
-                    .to_string();
+                let id = info.get_property_val_str("id").unwrap_or("").to_string();
                 if id.is_empty() {
                     tracing::debug!(
                         hostname = info.get_hostname(),
@@ -231,29 +227,26 @@ pub async fn discover(timeout_secs: u64) -> Result<Vec<DiscoveredAccessory>, Dis
                     .collect();
 
                 let accessory = DiscoveredAccessory {
-                        name: info.get_hostname().to_string(),
-                        id: id.clone(),
-                        addr,
-                        port: info.get_port(),
-                        model: info
-                            .get_property_val_str("md")
-                            .unwrap_or("")
-                            .to_string(),
-                        state_number: info
-                            .get_property_val_str("s#")
-                            .and_then(|s| s.parse().ok())
-                            .unwrap_or(0),
-                        feature_flags: info
-                            .get_property_val_str("ff")
-                            .and_then(|s| s.parse().ok())
-                            .unwrap_or(0),
-                        status_flags: info
-                            .get_property_val_str("sf")
-                            .and_then(|s| s.parse().ok())
-                            .unwrap_or(0),
-                        category,
-                        txt_records,
-                    };
+                    name: info.get_hostname().to_string(),
+                    id: id.clone(),
+                    addr,
+                    port: info.get_port(),
+                    model: info.get_property_val_str("md").unwrap_or("").to_string(),
+                    state_number: info
+                        .get_property_val_str("s#")
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(0),
+                    feature_flags: info
+                        .get_property_val_str("ff")
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(0),
+                    status_flags: info
+                        .get_property_val_str("sf")
+                        .and_then(|s| s.parse().ok())
+                        .unwrap_or(0),
+                    category,
+                    txt_records,
+                };
                 tracing::debug!(
                     name = accessory.display_name(),
                     id = %accessory.id,
@@ -313,10 +306,7 @@ mod tests {
 
     #[test]
     fn normalize_accessory_id_strips_separators() {
-        assert_eq!(
-            normalize_accessory_id("18:E2:7F:FE:8D:24"),
-            "18e27ffe8d24"
-        );
+        assert_eq!(normalize_accessory_id("18:E2:7F:FE:8D:24"), "18e27ffe8d24");
         assert_eq!(normalize_accessory_id("18E27FFE8D24"), "18e27ffe8d24");
     }
 
