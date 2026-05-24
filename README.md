@@ -1,4 +1,4 @@
-# ecobee-exporter
+# Prometheus ecobee-exporter
 
 A Prometheus exporter for ecobee thermostats, written in Rust. Talks to
 ecobee's internal Beehive GraphQL API rather than the official developer
@@ -7,47 +7,41 @@ REST API.
 ## Read this first: terms of service
 
 This exporter scrapes data from ecobee's mobile-app API, not the official
-[developer API][dev-api]. That's a deliberate trade-off, because new
+[developer API](https://www.ecobee.com/home/developer/api/introduction/index.shtml). That's a deliberate trade-off, because new
 developer accounts have been closed to registration [since March 28,
-2024][moratorium] and pre-existing keys are not assumed.
+2024](https://github.com/home-assistant/home-assistant.io/pull/33272) and pre-existing keys are not assumed.
 
 Using the Beehive API to back a long-running exporter is almost certainly
 a violation of ecobee's terms of service. Concretely:
 
-  - ecobee can revoke your account or rotate the mobile-app's client
-    credentials at any time, breaking this exporter without notice.
-  - Scraping frequency must stay reasonable. The collector defaults to
-    one fetch every three minutes, matching how often the thermostat
-    itself reports new data; do not turn it down.
-  - This is for personal use against your own thermostats. Don't run it
-    against someone else's account.
+- ecobee can revoke your account or rotate the mobile-app's client
+credentials at any time, breaking this exporter without notice.
+- Scraping frequency must stay reasonable. The collector defaults to
+one fetch every three minutes, matching how often the thermostat
+itself reports new data; do not turn it down.
+- This is for personal use against your own thermostats. Don't run it
+against someone else's account.
 
 If you can recover a pre-2024 developer key, **you should use that
 instead** via one of the existing exporters
-([billykwooten/ecobee-exporter][bk], [cfunkhouser/promobee][cfunk],
-[mrala/ecobee_prometheus_exporter][mrala]). This project exists for
+([billykwooten/ecobee-exporter](https://github.com/billykwooten/ecobee-exporter), [cfunkhouser/promobee](https://github.com/cfunkhouser/promobee),
+[mrala/ecobee_prometheus_exporter](https://github.com/mrala/ecobee_prometheus_exporter)). This project exists for
 people who do not have that option.
-
-[dev-api]: https://www.ecobee.com/home/developer/api/introduction/index.shtml
-[moratorium]: https://github.com/home-assistant/home-assistant.io/pull/33272
-[bk]: https://github.com/billykwooten/ecobee-exporter
-[cfunk]: https://github.com/cfunkhouser/promobee
-[mrala]: https://github.com/mrala/ecobee_prometheus_exporter
 
 ## Current status
 
 End-to-end functional. Fetches real thermostat + sensor + runtime data
 from `api.ecobee.com/1/thermostat` using an Auth0-issued JWT bearer
-token, and renders the documented [billykwooten/ecobee-exporter][bk]
+token, and renders the documented [billykwooten/ecobee-exporter](https://github.com/billykwooten/ecobee-exporter)
 metric set.
 
-  - HTTP server on `/metrics` and `/healthz`.
-  - Auth0 + PKCE one-time login bootstrap (`cargo run --bin ecobee-login`),
-    persistent refresh-token rotation, mode-0600 state file.
-  - Polling loop with a configurable interval and a 60-second floor.
-  - Configuration via TOML file, environment variables, and CLI flags.
-  - `--demo` mode that serves canned data so dashboards and scrape
-    configs can be developed without credentials.
+- HTTP server on `/metrics` and `/healthz`.
+- Auth0 + PKCE one-time login bootstrap (`cargo run --bin ecobee-login`),
+persistent refresh-token rotation, mode-0600 state file.
+- Polling loop with a configurable interval and a 60-second floor.
+- Configuration via TOML file, environment variables, and CLI flags.
+- `--demo` mode that serves canned data so dashboards and scrape
+configs can be developed without credentials.
 
 ## Bootstrap
 
@@ -172,22 +166,25 @@ to `ecobee-exporter.toml` only if you need to override something.
 
 Layered, lowest-to-highest precedence:
 
-  1. Built-in defaults.
-  2. `ecobee-exporter.toml` in the working directory.
-  3. The file at `$ECOBEE_EXPORTER_CONFIG`, or the `--config` flag.
-  4. Environment variables prefixed `ECOBEE_`. Nested keys use `__`,
-     e.g. `ECOBEE_BEEHIVE__ENDPOINT=https://...`.
+1. Built-in defaults.
+2. `ecobee-exporter.toml` in the working directory.
+3. The file at `$ECOBEE_EXPORTER_CONFIG`, or the `--config` flag.
+4. Environment variables prefixed `ECOBEE_`. Nested keys use `__`,
 
-| Key                       | Default                          | Notes                                                                 |
-|---------------------------|----------------------------------|-----------------------------------------------------------------------|
-| `listen_addr`             | `0.0.0.0:9098`                   | Where `/metrics` is served.                                           |
-| `poll_interval`           | `3m`                             | Floored to 60s; ecobee data only updates every ~3 minutes anyway.     |
-| `state_file`              | `./ecobee-exporter.state.json`   | Where refresh tokens are persisted.                                   |
-| `demo`                    | `false`                          | Serve canned data; no upstream calls.                                 |
-| `beehive.endpoint`        | `https://api.ecobee.com/1`       | Data API base URL. The default is the documented developer-API host. |
-| `beehive.user_agent`      | `ecobee-exporter/0.1.0`          | Override to mimic the official mobile app if upstream rejects yours.  |
-| `beehive.extra_headers`   | `[]`                             | List of `[key, value]` pairs to add to every request.                 |
-| `beehive.refresh_token`   | `null`                           | Optional refresh-token seed; normally lives in `state_file` after `ecobee-login`. |
+e.g. `ECOBEE_BEEHIVE__ENDPOINT=https://...`.
+
+
+| Key                     | Default                        | Notes                                                                             |
+| ----------------------- | ------------------------------ | --------------------------------------------------------------------------------- |
+| `listen_addr`           | `0.0.0.0:9098`                 | Where `/metrics` is served.                                                       |
+| `poll_interval`         | `3m`                           | Floored to 60s; ecobee data only updates every ~3 minutes anyway.                 |
+| `state_file`            | `./ecobee-exporter.state.json` | Where refresh tokens are persisted.                                               |
+| `demo`                  | `false`                        | Serve canned data; no upstream calls.                                             |
+| `beehive.endpoint`      | `https://api.ecobee.com/1`     | Data API base URL. The default is the documented developer-API host.              |
+| `beehive.user_agent`    | `ecobee-exporter/0.1.0`        | Override to mimic the official mobile app if upstream rejects yours.              |
+| `beehive.extra_headers` | `[]`                           | List of `[key, value]` pairs to add to every request.                             |
+| `beehive.refresh_token` | `null`                         | Optional refresh-token seed; normally lives in `state_file` after `ecobee-login`. |
+
 
 Put secrets in the config file with `chmod 600`, not env vars. Env vars
 leak into systemd journals and `ps`.
@@ -201,30 +198,32 @@ description column.
 
 ### Thermostat + sensor
 
-| Metric                            | Labels                                                              | Description                                                                            |
-|-----------------------------------|---------------------------------------------------------------------|----------------------------------------------------------------------------------------|
-| `ecobee_fetch_time`               | —                                                                   | Seconds the last upstream fetch took.                                                  |
-| `ecobee_fetch_failures_total`     | —                                                                   | Counter of failed fetches since start. *(extension)*                                   |
-| `ecobee_actual_temperature`       | `thermostat_id`, `thermostat_name`                                  | Thermostat-averaged current temperature, degrees.                                      |
-| `ecobee_target_temperature_min`   | `thermostat_id`, `thermostat_name`                                  | Heating setpoint, degrees.                                                             |
-| `ecobee_target_temperature_max`   | `thermostat_id`, `thermostat_name`                                  | Cooling setpoint, degrees.                                                             |
-| `ecobee_currenthvacmode`          | `thermostat_id`, `thermostat_name`, `current_hvac_mode`             | Always `0`; the mode is encoded as a label, matching billykwooten.                     |
-| `ecobee_connected`                | `thermostat_id`, `thermostat_name`                                  | 1 if the thermostat is currently reachable by ecobee's cloud, else 0. *(extension)*    |
-| `ecobee_temperature`              | `thermostat_id`, `thermostat_name`, `sensor_id`, `sensor_name`, `sensor_type` | Per-sensor temperature, degrees.                                              |
-| `ecobee_humidity`                 | `thermostat_id`, `thermostat_name`, `sensor_id`, `sensor_name`, `sensor_type` | Per-sensor humidity, percent.                                                 |
-| `ecobee_occupancy`                | `thermostat_id`, `thermostat_name`, `sensor_id`, `sensor_name`, `sensor_type` | Per-sensor occupancy (0 or 1).                                                |
-| `ecobee_in_use`                   | `thermostat_id`, `thermostat_name`, `sensor_id`, `sensor_name`, `sensor_type` | Whether the sensor is being included in thermostat averages (0 or 1).         |
-| `ecobee_actual_humidity`          | `thermostat_id`, `thermostat_name`                                  | Thermostat-averaged relative humidity, percent. *(extension)*                          |
-| `ecobee_desired_humidity`         | `thermostat_id`, `thermostat_name`                                  | Humidifier setpoint, percent. *(extension)*                                            |
-| `ecobee_desired_dehumidity`       | `thermostat_id`, `thermostat_name`                                  | Dehumidifier setpoint, percent. *(extension)*                                          |
-| `ecobee_raw_temperature`          | `thermostat_id`, `thermostat_name`                                  | Dry-bulb temperature at the thermostat, degrees. *(extension)*                       |
-| `ecobee_desired_fan_mode`         | `thermostat_id`, `thermostat_name`, `desired_fan_mode`              | Always `0`; fan mode encoded as a label (`auto`, `on`). *(extension)*                  |
-| `ecobee_current_climate`          | `thermostat_id`, `thermostat_name`, `current_climate`               | Always `0`; active schedule climate encoded as a label (`home`, `sleep`, …). *(extension)* |
-| `ecobee_hold_active`              | `thermostat_id`, `thermostat_name`                                  | 1 if a hold/vacation/DR event is running. *(extension)*                                |
-| `ecobee_follow_me_comfort`        | `thermostat_id`, `thermostat_name`                                  | 1 if follow-me comfort is enabled. *(extension)*                                       |
-| `ecobee_smart_circulation`        | `thermostat_id`, `thermostat_name`                                  | 1 if smart circulation is enabled. *(extension)*                                       |
-| `ecobee_heat_stages`              | `thermostat_id`, `thermostat_name`                                  | Number of configured heating stages. *(extension)*                                       |
-| `ecobee_cool_stages`              | `thermostat_id`, `thermostat_name`                                  | Number of configured cooling stages. *(extension)*                                       |
+
+| Metric                          | Labels                                                                        | Description                                                                                |
+| ------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `ecobee_fetch_time`             | —                                                                             | Seconds the last upstream fetch took.                                                      |
+| `ecobee_fetch_failures_total`   | —                                                                             | Counter of failed fetches since start. *(extension)*                                       |
+| `ecobee_actual_temperature`     | `thermostat_id`, `thermostat_name`                                            | Thermostat-averaged current temperature, degrees.                                          |
+| `ecobee_target_temperature_min` | `thermostat_id`, `thermostat_name`                                            | Heating setpoint, degrees.                                                                 |
+| `ecobee_target_temperature_max` | `thermostat_id`, `thermostat_name`                                            | Cooling setpoint, degrees.                                                                 |
+| `ecobee_currenthvacmode`        | `thermostat_id`, `thermostat_name`, `current_hvac_mode`                       | Always `0`; the mode is encoded as a label, matching billykwooten.                         |
+| `ecobee_connected`              | `thermostat_id`, `thermostat_name`                                            | 1 if the thermostat is currently reachable by ecobee's cloud, else 0. *(extension)*        |
+| `ecobee_temperature`            | `thermostat_id`, `thermostat_name`, `sensor_id`, `sensor_name`, `sensor_type` | Per-sensor temperature, degrees.                                                           |
+| `ecobee_humidity`               | `thermostat_id`, `thermostat_name`, `sensor_id`, `sensor_name`, `sensor_type` | Per-sensor humidity, percent.                                                              |
+| `ecobee_occupancy`              | `thermostat_id`, `thermostat_name`, `sensor_id`, `sensor_name`, `sensor_type` | Per-sensor occupancy (0 or 1).                                                             |
+| `ecobee_in_use`                 | `thermostat_id`, `thermostat_name`, `sensor_id`, `sensor_name`, `sensor_type` | Whether the sensor is being included in thermostat averages (0 or 1).                      |
+| `ecobee_actual_humidity`        | `thermostat_id`, `thermostat_name`                                            | Thermostat-averaged relative humidity, percent. *(extension)*                              |
+| `ecobee_desired_humidity`       | `thermostat_id`, `thermostat_name`                                            | Humidifier setpoint, percent. *(extension)*                                                |
+| `ecobee_desired_dehumidity`     | `thermostat_id`, `thermostat_name`                                            | Dehumidifier setpoint, percent. *(extension)*                                              |
+| `ecobee_raw_temperature`        | `thermostat_id`, `thermostat_name`                                            | Dry-bulb temperature at the thermostat, degrees. *(extension)*                             |
+| `ecobee_desired_fan_mode`       | `thermostat_id`, `thermostat_name`, `desired_fan_mode`                        | Always `0`; fan mode encoded as a label (`auto`, `on`). *(extension)*                      |
+| `ecobee_current_climate`        | `thermostat_id`, `thermostat_name`, `current_climate`                         | Always `0`; active schedule climate encoded as a label (`home`, `sleep`, …). *(extension)* |
+| `ecobee_hold_active`            | `thermostat_id`, `thermostat_name`                                            | 1 if a hold/vacation/DR event is running. *(extension)*                                    |
+| `ecobee_follow_me_comfort`      | `thermostat_id`, `thermostat_name`                                            | 1 if follow-me comfort is enabled. *(extension)*                                           |
+| `ecobee_smart_circulation`      | `thermostat_id`, `thermostat_name`                                            | 1 if smart circulation is enabled. *(extension)*                                           |
+| `ecobee_heat_stages`            | `thermostat_id`, `thermostat_name`                                            | Number of configured heating stages. *(extension)*                                         |
+| `ecobee_cool_stages`            | `thermostat_id`, `thermostat_name`                                            | Number of configured cooling stages. *(extension)*                                         |
+
 
 ### Outdoor weather *(extension)*
 
@@ -232,19 +231,21 @@ Sourced from the thermostat's associated weather station's current
 forecast block. Any reading ecobee marks as missing (its `-5002`
 sentinel) is suppressed rather than reported as a fake value.
 
-| Metric                                            | Labels                                                | Description                                                                |
-|---------------------------------------------------|-------------------------------------------------------|----------------------------------------------------------------------------|
-| `ecobee_outdoor_temperature`                      | `thermostat_id`, `thermostat_name`, `station`         | Outdoor temperature, degrees (Fahrenheit for US accounts).                 |
-| `ecobee_outdoor_humidity`                         | `thermostat_id`, `thermostat_name`, `station`         | Outdoor relative humidity, percent.                                        |
-| `ecobee_outdoor_pressure_mb`                      | `thermostat_id`, `thermostat_name`, `station`         | Sea-level pressure, millibars (equivalent to hPa).                         |
-| `ecobee_outdoor_dewpoint`                         | `thermostat_id`, `thermostat_name`, `station`         | Outdoor dewpoint, degrees.                                                 |
-| `ecobee_outdoor_wind_speed_mph`                   | `thermostat_id`, `thermostat_name`, `station`         | Wind speed, mph.                                                           |
-| `ecobee_outdoor_wind_gust_mph`                    | `thermostat_id`, `thermostat_name`, `station`         | Wind gust, mph (often suppressed by ecobee).                               |
-| `ecobee_outdoor_wind_bearing_degrees`             | `thermostat_id`, `thermostat_name`, `station`         | Wind bearing, compass degrees (0 = N, 90 = E).                             |
-| `ecobee_outdoor_visibility_meters`                | `thermostat_id`, `thermostat_name`, `station`         | Visibility, meters.                                                        |
-| `ecobee_outdoor_probability_of_precipitation`     | `thermostat_id`, `thermostat_name`, `station`         | Probability of precipitation, percent (0–100).                             |
-| `ecobee_outdoor_temp_high`                        | `thermostat_id`, `thermostat_name`, `station`         | Forecast daily high, degrees.                                              |
-| `ecobee_outdoor_temp_low`                         | `thermostat_id`, `thermostat_name`, `station`         | Forecast daily low, degrees.                                               |
+
+| Metric                                        | Labels                                        | Description                                                |
+| --------------------------------------------- | --------------------------------------------- | ---------------------------------------------------------- |
+| `ecobee_outdoor_temperature`                  | `thermostat_id`, `thermostat_name`, `station` | Outdoor temperature, degrees (Fahrenheit for US accounts). |
+| `ecobee_outdoor_humidity`                     | `thermostat_id`, `thermostat_name`, `station` | Outdoor relative humidity, percent.                        |
+| `ecobee_outdoor_pressure_mb`                  | `thermostat_id`, `thermostat_name`, `station` | Sea-level pressure, millibars (equivalent to hPa).         |
+| `ecobee_outdoor_dewpoint`                     | `thermostat_id`, `thermostat_name`, `station` | Outdoor dewpoint, degrees.                                 |
+| `ecobee_outdoor_wind_speed_mph`               | `thermostat_id`, `thermostat_name`, `station` | Wind speed, mph.                                           |
+| `ecobee_outdoor_wind_gust_mph`                | `thermostat_id`, `thermostat_name`, `station` | Wind gust, mph (often suppressed by ecobee).               |
+| `ecobee_outdoor_wind_bearing_degrees`         | `thermostat_id`, `thermostat_name`, `station` | Wind bearing, compass degrees (0 = N, 90 = E).             |
+| `ecobee_outdoor_visibility_meters`            | `thermostat_id`, `thermostat_name`, `station` | Visibility, meters.                                        |
+| `ecobee_outdoor_probability_of_precipitation` | `thermostat_id`, `thermostat_name`, `station` | Probability of precipitation, percent (0–100).             |
+| `ecobee_outdoor_temp_high`                    | `thermostat_id`, `thermostat_name`, `station` | Forecast daily high, degrees.                              |
+| `ecobee_outdoor_temp_low`                     | `thermostat_id`, `thermostat_name`, `station` | Forecast daily low, degrees.                               |
+
 
 ### Equipment runtime *(extension)*
 
@@ -256,38 +257,46 @@ known equipment identifier per thermostat. Known values are:
 identifiers that show up in a future ecobee build still appear as
 extra series.
 
-| Metric                       | Labels                                                | Description                                       |
-|------------------------------|-------------------------------------------------------|---------------------------------------------------|
-| `ecobee_equipment_running`   | `thermostat_id`, `thermostat_name`, `equipment`       | 1 if that equipment is currently running, else 0. |
+
+| Metric                     | Labels                                          | Description                                       |
+| -------------------------- | ----------------------------------------------- | ------------------------------------------------- |
+| `ecobee_equipment_running` | `thermostat_id`, `thermostat_name`, `equipment` | 1 if that equipment is currently running, else 0. |
+
 
 ### Hold / events *(extension)*
 
 Emitted when a hold, vacation, or demand-response event is actively running.
 
-| Metric                       | Labels                                                | Description                                       |
-|------------------------------|-------------------------------------------------------|---------------------------------------------------|
-| `ecobee_hold_heat_temp`      | `thermostat_id`, `thermostat_name`                    | Heat hold setpoint, degrees.                      |
-| `ecobee_hold_cool_temp`      | `thermostat_id`, `thermostat_name`                    | Cool hold setpoint, degrees.                      |
-| `ecobee_event_type`          | `thermostat_id`, `thermostat_name`, `event_type`      | Always `0`; event type encoded as a label.        |
+
+| Metric                  | Labels                                           | Description                                |
+| ----------------------- | ------------------------------------------------ | ------------------------------------------ |
+| `ecobee_hold_heat_temp` | `thermostat_id`, `thermostat_name`               | Heat hold setpoint, degrees.               |
+| `ecobee_hold_cool_temp` | `thermostat_id`, `thermostat_name`               | Cool hold setpoint, degrees.               |
+| `ecobee_event_type`     | `thermostat_id`, `thermostat_name`, `event_type` | Always `0`; event type encoded as a label. |
+
 
 ### Extended runtime *(extension)*
 
 Per-equipment runtime from the last three 5-minute intervals (interval `0` = oldest, `2` = newest). Values are seconds of runtime within each 5-minute bucket (0–300).
 
-| Metric                              | Labels                                                       | Description                                       |
-|-------------------------------------|--------------------------------------------------------------|---------------------------------------------------|
-| `ecobee_equipment_runtime_seconds`  | `thermostat_id`, `thermostat_name`, `equipment`, `interval`  | Equipment runtime in seconds per 5-minute bucket. |
-| `ecobee_demand_management_offset`   | `thermostat_id`, `thermostat_name`, `interval`               | Demand-management temperature offset, degrees.    |
-| `ecobee_current_electricity_bill`   | `thermostat_id`, `thermostat_name`                         | Current bill from a paired utility meter (if any). |
-| `ecobee_projected_electricity_bill` | `thermostat_id`, `thermostat_name`                         | Projected bill from a paired utility meter (if any). |
+
+| Metric                              | Labels                                                      | Description                                          |
+| ----------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------- |
+| `ecobee_equipment_runtime_seconds`  | `thermostat_id`, `thermostat_name`, `equipment`, `interval` | Equipment runtime in seconds per 5-minute bucket.    |
+| `ecobee_demand_management_offset`   | `thermostat_id`, `thermostat_name`, `interval`              | Demand-management temperature offset, degrees.       |
+| `ecobee_current_electricity_bill`   | `thermostat_id`, `thermostat_name`                          | Current bill from a paired utility meter (if any).   |
+| `ecobee_projected_electricity_bill` | `thermostat_id`, `thermostat_name`                          | Projected bill from a paired utility meter (if any). |
+
 
 Equipment names match the extended-runtime API fields: `heatPump1`, `heatPump2`, `auxHeat1`, `auxHeat2`, `auxHeat3`, `cool1`, `cool2`, `fan`, `humidifier`, `dehumidifier`, `ventilator`, `economizer`.
 
 ### Alerts *(extension)*
 
-| Metric                | Labels                                                              | Description                              |
-|-----------------------|---------------------------------------------------------------------|------------------------------------------|
-| `ecobee_alert_active` | `thermostat_id`, `thermostat_name`, `alert_type`, `alert_number`    | 1 for each active alert on the thermostat. |
+
+| Metric                | Labels                                                           | Description                                |
+| --------------------- | ---------------------------------------------------------------- | ------------------------------------------ |
+| `ecobee_alert_active` | `thermostat_id`, `thermostat_name`, `alert_type`, `alert_number` | 1 for each active alert on the thermostat. |
+
 
 ## Architecture
 
@@ -315,9 +324,9 @@ without touching the metrics or HTTP layers.
 
 ## Why not local HomeKit / Matter?
 
-A reasonable alternative path. ecobee thermostats expose much of this
-data over local HomeKit (and Matter on newer Premium/Enhanced models),
-which would avoid the ToS issue entirely. The current Rust HomeKit
+A reasonable alternative path. Ecobee thermostats expose much of this  
+data over local HomeKit (and Matter on newer Premium/Enhanced models),  
+which would avoid the ToS issue entirely. The current Rust HomeKit  
 Accessory Protocol *controller* ecosystem is thin compared to the
 Python `aiohomekit` library that Home Assistant uses, so the
 implementation cost is high. If Beehive turns out to be too hostile, falling back to a HomeKit-based
@@ -328,34 +337,36 @@ exporter is unchanged.
 
 Short-term:
 
-  - ~~Implement Auth0 + PKCE login + refresh.~~ Done.
-  - ~~Implement the data-API call against `api.ecobee.com/1/thermostat`.~~ Done.
-  - ~~Add a fixture-based parsing test for the response shape.~~ Done.
+- ~~Implement Auth0 + PKCE login + refresh.~~ Done.
+- ~~Implement the data-API call against `api.ecobee.com/1/thermostat`.~~ Done.
+- ~~Add a fixture-based parsing test for the response shape.~~ Done.
 
 Medium-term (parity-plus):
 
-  - ~~`ecobee_equipment_running{equipment}`.~~ Done.
-  - ~~Outdoor weather metrics from the weather block.~~ Done.
-  - ~~Tier-1 runtime/settings/program metrics (humidity setpoints, fan mode, climate, hold state).~~ Done.
-  - ~~Extended runtime seconds + demand-management offsets.~~ Done.
-  - ~~Active alerts.~~ Done.
-  - Air-quality metrics on Premium models (`co2`, `vocPpb`, `airQualityAccuracy`).
+- ~~`ecobee_equipment_running{equipment}`.~~ Done.
+- ~~Outdoor weather metrics from the weather block.~~ Done.
+- ~~Tier-1 runtime/settings/program metrics (humidity setpoints, fan mode, climate, hold state).~~ Done.
+- ~~Extended runtime seconds + demand-management offsets.~~ Done.
+- ~~Active alerts.~~ Done.
+- Air-quality metrics on Premium models (`co2`, `vocPpb`, `airQualityAccuracy`).
 
 Long-term (operational polish):
 
-  - ~~Dockerfile + GitHub Actions image build.~~ Done.
-  - Multi-arch container images.
-  - systemd unit file with `DynamicUser=yes` and a state directory.
-  - Grafana dashboard JSON checked in under `dashboards/`.
+- ~~Dockerfile + GitHub Actions image build.~~ Done.
+- ~~Multi-arch container images.~~ Done.
+- systemd unit file with `DynamicUser=yes` and a state directory.
+- Grafana dashboard JSON checked in under `dashboards/`.
 
 ## GitHub Actions
 
 CI runs on every push and pull request via [`.github/workflows/ci.yml`](./.github/workflows/ci.yml):
 
-| Job | What it does |
-|---|---|
-| `rust` | `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test --locked` |
+
+| Job      | What it does                                                                                               |
+| -------- | ---------------------------------------------------------------------------------------------------------- |
+| `rust`   | `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test --locked`                                  |
 | `docker` | Builds the Alpine image; pushes to GitHub Container Registry on branch pushes and tags (build-only on PRs) |
+
 
 After the first push to `master`, pull the image:
 
