@@ -1,4 +1,4 @@
-# Prometheus ecobee-exporter
+# FA?Prometheus ecobee-exporter
 
 A Prometheus exporter for ecobee thermostats, written in Rust. Talks to
 ecobee's internal Beehive GraphQL API rather than the official developer
@@ -42,6 +42,9 @@ persistent refresh-token rotation, mode-0600 state file.
 - Configuration via TOML file, environment variables, and CLI flags.
 - `--demo` mode that serves canned data so dashboards and scrape
 configs can be developed without credentials.
+- Optional **HomeKit backend** (`provider = "homekit"`) that reads
+thermostats over the LAN via the in-tree [`housekey`](crates/housekey/housekey)
+HAP client — no cloud API or Auth0 login required.
 
 ## Bootstrap
 
@@ -180,6 +183,8 @@ e.g. `ECOBEE_BEEHIVE__ENDPOINT=https://...`.
 | `poll_interval`         | `3m`                           | Floored to 60s; ecobee data only updates every ~3 minutes anyway.                 |
 | `state_file`            | `./ecobee-exporter.state.json` | Where refresh tokens are persisted.                                               |
 | `demo`                  | `false`                        | Serve canned data; no upstream calls.                                             |
+| `provider`              | `beehive`                      | Data source: `beehive` (cloud) or `homekit` (local LAN).                          |
+| `homekit.pairing_file`  | `./homekit-pairings.json`      | HomeKit pairing keys written by `ecobee-homekit-pair`. `chmod 600` recommended.   |
 | `beehive.endpoint`      | `https://api.ecobee.com/1`     | Data API base URL. The default is the documented developer-API host.              |
 | `beehive.user_agent`    | `ecobee-exporter/0.1.0`        | Override to mimic the official mobile app if upstream rejects yours.              |
 | `beehive.extra_headers` | `[]`                           | List of `[key, value]` pairs to add to every request.                             |
@@ -313,25 +318,75 @@ Equipment names match the extended-runtime API fields: `heatPump1`, `heatPump2`,
                 |  Collector loop     |<------>|  ThermostatProv.  |  trait
                 +---------------------+ fetch  +---------+---------+
                                                          |
-                                          impl 1: BeehiveProvider  (real)
-                                          impl 2: FakeProvider     (demo/test)
+                                          impl 1: BeehiveProvider   (cloud)
+                                          impl 2: HomeKitProvider   (local LAN)
+                                          impl 3: FakeProvider      (demo/test)
 ```
 
 `ThermostatProvider` is the seam: anything that can return a
-`Vec<Thermostat>` can drive the exporter. If a HomeKit or Matter
-controller path becomes practical later, it slots in alongside Beehive
-without touching the metrics or HTTP layers.
+`Vec<Thermostat>` can drive the exporter. HomeKit and Beehive share the
+same metrics and HTTP layers.
 
-## Why not local HomeKit / Matter?
+## HomeKit backend
 
-A reasonable alternative path. Ecobee thermostats expose much of this  
-data over local HomeKit (and Matter on newer Premium/Enhanced models),  
-which would avoid the ToS issue entirely. The current Rust HomeKit  
-Accessory Protocol *controller* ecosystem is thin compared to the
-Python `aiohomekit` library that Home Assistant uses, so the
-implementation cost is high. If Beehive turns out to be too hostile, falling back to a HomeKit-based
-`ThermostatProvider` is the natural next step — the rest of the
-exporter is unchanged.
+Ecobee thermostats expose temperature, humidity, occupancy, and HVAC
+state over local HomeKit. Using this path avoids the Beehive ToS
+concerns above — data stays on your LAN and no Auth0 session is needed.
+
+Pairing is a one-time bootstrap; the exporter reuses stored keys on
+every poll.
+
+### 1. Discover the thermostat
+
+The ecobee must be on the same LAN as the exporter host, with HomeKit
+enabled in **Settings → HomeKit** (note the 8-digit setup code).
+
+```sh
+cargo run --bin ecobee-homekit-pair -- --discover-only
+```
+
+Example output:
+
+```
+Main Floor  id=AA:BB:CC:DD:EE:FF  192.168.1.42:51826  category=Thermostat  model=ecobee3 lite
+```
+
+Copy the `id=` value for the next step.
+
+### 2. Pair and save keys
+
+```sh
+cargo run --bin ecobee-homekit-pair -- \
+  --device-id AA:BB:CC:DD:EE:FF \
+  --code 12345678 \
+  --alias ecobee
+```
+
+This writes pairing keys to `./homekit-pairings.json` (override with
+`--pairing-file` or `ECOBEE_HOMEKIT_PAIRING_FILE`). Treat the file like
+a secret (`chmod 600`).
+
+### 3. Run the exporter
+
+In `ecobee-exporter.toml`:
+
+```toml
+provider = "homekit"
+
+[homekit]
+pairing_file = "./homekit-pairings.json"
+```
+
+Or via environment:
+
+```sh
+export ECOBEE_PROVIDER=homekit
+export ECOBEE_HOMEKIT__PAIRING_FILE=./homekit-pairings.json
+cargo run --release
+```
+
+Outdoor weather, extended runtime, alerts, and some Beehive-only fields
+are not available over HomeKit; those metrics are simply omitted.
 
 ## Roadmap
 
@@ -340,6 +395,7 @@ Short-term:
 - ~~Implement Auth0 + PKCE login + refresh.~~ Done.
 - ~~Implement the data-API call against `api.ecobee.com/1/thermostat`.~~ Done.
 - ~~Add a fixture-based parsing test for the response shape.~~ Done.
+- ~~Native HomeKit `ThermostatProvider` via in-tree `housekey` crate.~~ Done.
 
 Medium-term (parity-plus):
 
@@ -359,7 +415,7 @@ Long-term (operational polish):
 
 ## GitHub Actions
 
-CI runs on every push and pull request via [`.github/workflows/ci.yml`](./.github/workflows/ci.yml):
+CI runs on every push and pull request via `[.github/workflows/ci.yml](./.github/workflows/ci.yml)`:
 
 
 | Job      | What it does                                                                                               |
@@ -396,4 +452,4 @@ RUST_LOG=ecobee_exporter=debug cargo run -- --demo
 
 ## License
 
-Apache-2.0. See [`LICENSE`](./LICENSE).
+Apache-2.0. See `[LICENSE](./LICENSE)`.

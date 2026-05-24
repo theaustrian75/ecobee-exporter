@@ -14,6 +14,10 @@ state_file = "./ecobee-exporter.state.json"
 # for building dashboards and Prometheus configs without credentials.
 demo = false
 
+# Data source: "beehive" (cloud Auth0 API, default) or "homekit" (local
+# HomeKit HAP — see README "HomeKit backend").
+# provider = "homekit"
+
 [beehive]
 # Data API base URL. The default (api.ecobee.com/1) is what the
 # documented developer REST API has always used. Only override if
@@ -31,3 +35,6 @@ demo = false
 # `cargo run --bin ecobee-login`. Set this here only to transplant a
 # refresh token between machines or to override what's on disk.
 # refresh_token = "…"
+
+# [homekit]
+# pairing_file = "./homekit-pairings.json"

@@ -11,6 +11,7 @@ pub mod auth0;
 pub mod beehive;
 pub mod collector;
 pub mod config;
+pub mod homekit;
 pub mod metrics;
 pub mod model;
 pub mod provider;

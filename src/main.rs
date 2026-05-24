@@ -8,7 +8,8 @@ use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberI
 use ecobee_exporter::{
     beehive::BeehiveProvider,
     collector::Collector,
-    config::Config,
+    config::{Config, ProviderKind},
+    homekit::HomeKitProvider,
     metrics::Metrics,
     provider::{FakeProvider, ThermostatProvider},
     server::{AppState, router},
@@ -18,7 +19,7 @@ use ecobee_exporter::{
 #[command(
     name = "ecobee-exporter",
     version,
-    about = "Prometheus exporter for ecobee thermostats (Beehive backend)"
+    about = "Prometheus exporter for ecobee thermostats (Beehive or HomeKit backend)"
 )]
 struct Cli {
     /// Path to a TOML config file. Overrides ECOBEE_EXPORTER_CONFIG.
@@ -44,19 +45,31 @@ async fn main() -> anyhow::Result<()> {
         listen = %cfg.listen_addr,
         poll_interval = ?cfg.poll_interval,
         demo = cfg.demo,
+        provider = ?cfg.provider,
         "starting ecobee-exporter"
     );
 
     let metrics = Arc::new(Metrics::new().context("setting up Prometheus registry")?);
 
     let provider: Arc<dyn ThermostatProvider> = if cfg.demo {
-        tracing::warn!("demo mode: serving canned data, no Beehive calls will be made");
+        tracing::warn!("demo mode: serving canned data, no upstream calls will be made");
         Arc::new(FakeProvider::demo())
     } else {
-        Arc::new(
-            BeehiveProvider::new(&cfg.beehive, cfg.state_file.clone())
-                .context("initializing Beehive provider")?,
-        )
+        match cfg.provider {
+            ProviderKind::Beehive => Arc::new(
+                BeehiveProvider::new(&cfg.beehive, cfg.state_file.clone())
+                    .context("initializing Beehive provider")?,
+            ),
+            ProviderKind::Homekit => {
+                tracing::info!(
+                    pairing_file = %cfg.homekit.pairing_file.display(),
+                    "using native HomeKit provider"
+                );
+                Arc::new(
+                    HomeKitProvider::new(&cfg.homekit).context("initializing HomeKit provider")?,
+                )
+            }
+        }
     };
 
     let collector = Collector::new(

@@ -18,6 +18,14 @@ use figment::{
 };
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ProviderKind {
+    #[default]
+    Beehive,
+    Homekit,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
@@ -42,9 +50,18 @@ pub struct Config {
     #[serde(default)]
     pub demo: bool,
 
-    /// Credentials for the Beehive API. Optional in `demo` mode.
+    /// Data source: `beehive` (cloud Auth0 API, default) or `homekit` (local
+    /// HomeKit HAP). Ignored when `demo = true`.
+    #[serde(default)]
+    pub provider: ProviderKind,
+
+    /// Credentials for the Beehive API. Used when `provider = "beehive"`.
     #[serde(default)]
     pub beehive: BeehiveConfig,
+
+    /// Settings for native HomeKit access. Used when `provider = "homekit"`.
+    #[serde(default)]
+    pub homekit: HomeKitConfig,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -69,6 +86,28 @@ pub struct BeehiveConfig {
     /// transplanting a token between machines.
     #[serde(default)]
     pub refresh_token: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HomeKitConfig {
+    /// JSON file storing HomeKit pairing keys (see `ecobee-homekit-pair`).
+    #[serde(default = "HomeKitConfig::default_pairing_file")]
+    pub pairing_file: PathBuf,
+}
+
+impl HomeKitConfig {
+    fn default_pairing_file() -> PathBuf {
+        PathBuf::from("./homekit-pairings.json")
+    }
+}
+
+impl Default for HomeKitConfig {
+    fn default() -> Self {
+        Self {
+            pairing_file: Self::default_pairing_file(),
+        }
+    }
 }
 
 impl Config {
@@ -117,7 +156,62 @@ impl Default for Config {
             poll_interval: Self::default_poll_interval(),
             state_file: Self::default_state_file(),
             demo: false,
+            provider: ProviderKind::Beehive,
             beehive: BeehiveConfig::default(),
+            homekit: HomeKitConfig::default(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use figment::{Figment, providers::Toml};
+
+    #[test]
+    fn homekit_config_defaults() {
+        let cfg = HomeKitConfig::default();
+        assert_eq!(cfg.pairing_file, PathBuf::from("./homekit-pairings.json"));
+    }
+
+    #[test]
+    fn deserializes_homekit_provider_and_pairing_file() {
+        let cfg: Config = Figment::new()
+            .merge(Toml::string(
+                r#"
+provider = "homekit"
+[homekit]
+pairing_file = "/var/lib/ecobee/pairings.json"
+"#,
+            ))
+            .extract()
+            .expect("figment extract");
+
+        assert_eq!(cfg.provider, ProviderKind::Homekit);
+        assert_eq!(
+            cfg.homekit.pairing_file,
+            PathBuf::from("/var/lib/ecobee/pairings.json")
+        );
+    }
+
+    #[test]
+    fn clamps_poll_interval_below_one_minute() {
+        let dir = tempdir();
+        let path = dir.join("cfg.toml");
+        std::fs::write(&path, r#"poll_interval = "15s""#).unwrap();
+        let cfg = Config::load(Some(&path)).expect("load config");
+        assert_eq!(cfg.poll_interval, Duration::from_mins(1));
+    }
+
+    fn tempdir() -> PathBuf {
+        let p = std::env::temp_dir().join(format!(
+            "ecobee-config-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0u128, |d| d.as_nanos())
+        ));
+        std::fs::create_dir_all(&p).unwrap();
+        p
     }
 }
