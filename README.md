@@ -333,6 +333,20 @@ Put secrets in the config file with `chmod 600`, not env vars — env vars leak 
 
 Copy `ecobee-exporter.example.toml` to `ecobee-exporter.toml` only when you need to override defaults.
 
+### TLS
+
+Set `[tls]` (or `--tls-cert-file` / `--tls-key-file`) to serve `/metrics` and `/healthz` over HTTPS instead of plain HTTP. Both paths must point at PEM files (e.g. Let's Encrypt `fullchain.pem` + `privkey.pem`). When TLS is enabled, configure Prometheus with `scheme: https`.
+
+```toml
+listen_addr = "0.0.0.0:9098"
+
+[tls]
+cert_file = "/etc/letsencrypt/live/example/fullchain.pem"
+key_file = "/etc/letsencrypt/live/example/privkey.pem"
+```
+
+The default Docker image `HEALTHCHECK` probes plain HTTP; override it when running with TLS.
+
 ### Docker compose
 
 Copy `docker-compose.example.yml` and adjust the image tag if needed:
