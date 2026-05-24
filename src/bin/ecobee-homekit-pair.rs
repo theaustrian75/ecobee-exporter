@@ -12,6 +12,7 @@ use housekey::{Controller, DISCOVER_TIMEOUT_SECS, DiscoveredAccessory};
     version,
     about = "Discover and pair an ecobee thermostat over HomeKit"
 )]
+#[allow(clippy::struct_excessive_bools, reason = "clap CLI flags")]
 struct Cli {
     /// Alias stored in the pairing file (default: ecobee).
     #[arg(long, default_value = "ecobee")]
@@ -37,9 +38,9 @@ struct Cli {
     #[arg(long)]
     discover_only: bool,
 
-    /// Read paired accessories and print a summary (debug connectivity).
-    #[arg(long)]
-    read_test: bool,
+    /// Verify existing pairings via mDNS + HAP pair-verify (no new pairing).
+    #[arg(long = "pair-verify")]
+    pair_verify: bool,
 
     /// List every HomeKit accessory, not just ecobee thermostats.
     #[arg(long)]
@@ -74,25 +75,42 @@ async fn main() -> anyhow::Result<()> {
     let mut controller = Controller::new(cli.pairing_file.clone());
     controller.load().context("loading existing pairings")?;
 
-    if cli.read_test {
-        let aliases: Vec<_> = controller.paired_devices().map(|d| d.alias.clone()).collect();
+    if cli.pair_verify {
+        let aliases: Vec<_> = controller
+            .paired_devices()
+            .map(|d| d.alias.clone())
+            .collect();
         if aliases.is_empty() {
             anyhow::bail!("no pairings in {}", cli.pairing_file.display());
         }
-        eprintln!("Testing {} pairing(s) via mDNS + pair-verify…", aliases.len());
-        match tokio::time::timeout(
-            std::time::Duration::from_secs(120),
-            controller.read_all_accessories(),
-        )
+        eprintln!(
+            "Testing {} pairing(s) (mDNS lookup + HAP pair-verify + /accessories)…",
+            aliases.len()
+        );
+        match tokio::time::timeout(std::time::Duration::from_mins(2), controller.read_all_accessories())
         .await
         {
             Ok(Ok(results)) => {
                 for (alias, accessories) in results {
                     eprintln!("  {alias}: OK ({} accessory tree(s))", accessories.len());
                 }
+                eprintln!("HomeKit reads succeeded.");
             }
-            Ok(Err(e)) => eprintln!("FAIL: {e}"),
-            Err(_) => eprintln!("FAIL: timed out after 120s"),
+            Ok(Err(e)) => {
+                eprintln!("FAIL: {e}");
+                eprintln!(
+                    "If errors mention pair-verify timeouts, Home Assistant may still be \
+                     polling these thermostats with the same HomeKit keys. Remove the ecobee \
+                     from HA's HomeKit Device integration, wait ~60s, and retry. Alternatively \
+                     pair natively with this tool (not HA import) after resetting HomeKit on the ecobee."
+                );
+            }
+            Err(_) => {
+                eprintln!("FAIL: timed out after 120s");
+                eprintln!(
+                    "Likely blocked on HAP pair-verify while Home Assistant holds an active session."
+                );
+            }
         }
         return Ok(());
     }

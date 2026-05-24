@@ -189,10 +189,10 @@ Imported `AccessoryIP` values are often HA's internal Docker addresses (e.g. `17
 If you only see `ecobee_fetch_time` and `ecobee_fetch_failures_total`, HomeKit reads are not completing. Test connectivity:
 
 ```sh
-cargo run --bin ecobee-homekit-pair -- --read-test -v
+cargo run --bin ecobee-homekit-pair -- --pair-verify -v
 ```
 
-- **`request timed out after 15s`** on every thermostat — the ecobee is not finishing `/pair-verify`. This usually means Home Assistant's **HomeKit Device** integration still holds an active session on the same thermostats. Remove the ecobee from HA's HomeKit integration (or disable that config entry), wait a minute, and retry. Sharing HA-imported keys while HA keeps polling rarely works.
+- **`request timed out after 15s`** on every thermostat — the ecobee is not finishing `/pair-verify`. This usually means Home Assistant's **HomeKit Device** integration still holds an active session on the same thermostats. Remove the ecobee from HA's HomeKit integration (or disable that config entry), wait a minute, and retry `--pair-verify`. HA-imported keys plus concurrent HA polling rarely works.
 - **`no pairings in …`** — mount or point `homekit.pairing_file` at your `homekit-pairings.json`.
 - **Prefer not to unpick HA?** Use `provider = "beehive"` for the exporter instead.
 

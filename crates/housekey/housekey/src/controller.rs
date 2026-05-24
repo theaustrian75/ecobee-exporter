@@ -22,6 +22,8 @@ pub enum ControllerError {
     StoreError(String),
     #[error("no paired accessories")]
     NoPairings,
+    #[error("all paired accessories failed to respond")]
+    AllReadsFailed,
     #[error(transparent)]
     Discovery(#[from] discovery::DiscoveryError),
     #[error(transparent)]
@@ -265,7 +267,7 @@ impl Controller {
             }
         }
         if out.is_empty() {
-            return Err(ControllerError::NoPairings);
+            return Err(ControllerError::AllReadsFailed);
         }
         Ok(out)
     }

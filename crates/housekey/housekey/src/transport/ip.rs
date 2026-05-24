@@ -143,7 +143,7 @@ impl IpConnection {
             return Ok(Vec::new());
         }
         session
-            .decrypt(body)
+            .decrypt_frames(body)
             .map_err(|e| TransportError::InvalidResponse(e.to_string()))
     }
 }

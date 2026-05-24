@@ -89,7 +89,7 @@ impl PairVerify {
         let accessory_id = sub
             .get(&TlvType::Identifier)
             .ok_or(PairingError::SignatureVerificationFailed)?;
-        if accessory_id.as_slice() != self.accessory_pairing_id.as_bytes() {
+        if !ids_match(&self.accessory_pairing_id, accessory_id) {
             return Err(PairingError::SignatureVerificationFailed);
         }
 
@@ -99,7 +99,7 @@ impl PairVerify {
 
         let mut accessory_info = Vec::new();
         accessory_info.extend_from_slice(&accessory_pk);
-        accessory_info.extend_from_slice(&self.accessory_pairing_id.as_bytes());
+        accessory_info.extend_from_slice(accessory_id);
         accessory_info.extend_from_slice(our_public);
 
         let verifying = VerifyingKey::from_bytes(&self.accessory_ltpk)
@@ -132,13 +132,13 @@ impl PairVerify {
 
         let write_key = hkdf_derive(
             shared.as_bytes(),
-            b"Control-Write-Encryption-Key",
+            b"Control-Salt",
             b"Control-Write-Encryption-Key",
         )
         .map_err(PairingError::Crypto)?;
         let read_key = hkdf_derive(
             shared.as_bytes(),
-            b"Control-Read-Encryption-Key",
+            b"Control-Salt",
             b"Control-Read-Encryption-Key",
         )
         .map_err(PairingError::Crypto)?;
@@ -181,4 +181,42 @@ fn check_error(tlvs: &TlvMap) -> Result<(), PairingError> {
         return Err(PairingError::AccessoryError(code));
     }
     Ok(())
+}
+
+fn ids_match(stored: &str, received: &[u8]) -> bool {
+    if received == stored.as_bytes() {
+        return true;
+    }
+    let hex = crate::discovery::normalize_accessory_id(stored);
+    if hex.len() == 12 {
+        if let Ok(decoded) = hex::decode(&hex) {
+            return decoded == received;
+        }
+    }
+    false
+}
+
+mod hex {
+    pub fn decode(s: &str) -> Result<Vec<u8>, ()> {
+        if !s.len().is_multiple_of(2) {
+            return Err(());
+        }
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|_| ()))
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ids_match_accepts_mac_string_or_six_bytes() {
+        let raw = [0x18, 0xe2, 0x7f, 0xfe, 0x8d, 0x24];
+        assert!(ids_match("18:E2:7F:FE:8D:24", &raw));
+        assert!(ids_match("18E27FFE8D24", &raw));
+        assert!(!ids_match("AA:BB:CC:DD:EE:FF", &raw));
+    }
 }
