@@ -3,6 +3,11 @@
 
 listen_addr = "0.0.0.0:9098"
 
+# Optional HTTPS for /metrics and /healthz (PEM files). When set, both paths are required.
+# [tls]
+# cert_file = "/etc/ssl/fullchain.pem"
+# key_file = "/etc/ssl/privkey.pem"
+
 # Floored to 60s at startup. Don't go lower than the default; ecobee
 # only updates upstream data every ~3 minutes anyway, so faster polling
 # just burns API quota.

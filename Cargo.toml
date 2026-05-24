@@ -31,6 +31,7 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
 url = "2.5.8"
 housekey = { path = "crates/housekey/housekey" }
+axum-server = { version = "0.8.0", features = ["tls-rustls"] }
 
 [dev-dependencies]
 tower = { version = "0.5.3", features = ["util"] }

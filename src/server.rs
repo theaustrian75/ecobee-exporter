@@ -1,7 +1,8 @@
 //! HTTP surface: `/metrics` (Prometheus text format) and `/healthz`.
 
-use std::sync::Arc;
+use std::{net::SocketAddr, sync::Arc};
 
+use anyhow::Context;
 use axum::{
     Router,
     extract::State,
@@ -10,7 +11,7 @@ use axum::{
     routing::get,
 };
 
-use crate::metrics::Metrics;
+use crate::{config::TlsConfig, metrics::Metrics};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -23,6 +24,38 @@ pub fn router(state: AppState) -> Router {
         .route("/healthz", get(healthz))
         .route("/metrics", get(metrics_handler))
         .with_state(state)
+}
+
+/// Bind and serve until the HTTP(S) server exits.
+pub async fn run(app: Router, addr: SocketAddr, tls: Option<&TlsConfig>) -> anyhow::Result<()> {
+    if let Some(tls) = tls {
+        tls.validate().map_err(anyhow::Error::msg)?;
+        let config =
+            axum_server::tls_rustls::RustlsConfig::from_pem_file(&tls.cert_file, &tls.key_file)
+                .await
+                .with_context(|| {
+                    format!(
+                        "loading TLS certificate {} and key {}",
+                        tls.cert_file.display(),
+                        tls.key_file.display()
+                    )
+                })?;
+        tracing::info!(addr = %addr, "metrics server listening (HTTPS)");
+        axum_server::bind_rustls(addr, config)
+            .serve(app.into_make_service())
+            .await
+            .context("HTTPS server exited")?;
+    } else {
+        let listener = tokio::net::TcpListener::bind(addr)
+            .await
+            .with_context(|| format!("binding {addr}"))?;
+        let bound = listener.local_addr().unwrap_or(addr);
+        tracing::info!(addr = %bound, "metrics server listening");
+        axum::serve(listener, app)
+            .await
+            .context("HTTP server exited")?;
+    }
+    Ok(())
 }
 
 async fn index() -> &'static str {

@@ -2,7 +2,6 @@ use std::{path::PathBuf, sync::Arc};
 
 use anyhow::Context;
 use clap::{ArgAction, Parser};
-use tokio::net::TcpListener;
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 use ecobee_exporter::{
@@ -13,7 +12,7 @@ use ecobee_exporter::{
     homekit::HomeKitProvider,
     metrics::Metrics,
     provider::{FakeProvider, ThermostatProvider},
-    server::{AppState, router},
+    server::{AppState, router, run as serve},
 };
 
 #[derive(Debug, Parser)]
@@ -55,6 +54,20 @@ struct Cli {
 
     #[command(flatten)]
     homeassistant: HomeAssistantCli,
+
+    #[command(flatten)]
+    tls: TlsCli,
+}
+
+#[derive(Debug, Parser)]
+struct TlsCli {
+    /// PEM certificate chain for the `/metrics` HTTPS server.
+    #[arg(long = "tls-cert-file", env = "ECOBEE_TLS__CERT_FILE")]
+    cert_file: Option<PathBuf>,
+
+    /// PEM private key for the `/metrics` HTTPS server.
+    #[arg(long = "tls-key-file", env = "ECOBEE_TLS__KEY_FILE")]
+    key_file: Option<PathBuf>,
 }
 
 #[derive(Debug, Parser)]
@@ -127,6 +140,8 @@ impl Cli {
             homeassistant_token: self.homeassistant.token.clone(),
             homeassistant_climate_entities: self.homeassistant.climate_entities.clone(),
             homeassistant_weather_entities: self.homeassistant.weather_entities.clone(),
+            tls_cert_file: self.tls.cert_file.clone(),
+            tls_key_file: self.tls.key_file.clone(),
         })
     }
 }
@@ -138,12 +153,16 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let mut cfg = Config::load(cli.config.as_deref()).context("loading config")?;
     cfg.apply_cli_overrides(&cli.overrides()?);
+    cfg.validate_tls()
+        .map_err(anyhow::Error::msg)
+        .context("invalid TLS configuration")?;
 
     tracing::info!(
         listen = %cfg.listen_addr,
         poll_interval = ?cfg.poll_interval,
         demo = cfg.demo,
         provider = ?cfg.provider,
+        tls = cfg.tls.is_some(),
         "starting ecobee-exporter"
     );
 
@@ -192,15 +211,10 @@ async fn main() -> anyhow::Result<()> {
     let collector_task = tokio::spawn(collector.run());
 
     let app = router(AppState { metrics });
-    let listener = TcpListener::bind(cfg.listen_addr)
-        .await
-        .with_context(|| format!("binding {}", cfg.listen_addr))?;
-    let bound = listener.local_addr().unwrap_or(cfg.listen_addr);
-    tracing::info!(addr = %bound, "metrics server listening");
 
     tokio::select! {
-        res = axum::serve(listener, app).into_future() => {
-            res.context("HTTP server crashed")?;
+        res = serve(app, cfg.listen_addr, cfg.tls.as_ref()) => {
+            res.context("metrics server crashed")?;
         }
         _ = collector_task => {
             anyhow::bail!("collector task exited unexpectedly");

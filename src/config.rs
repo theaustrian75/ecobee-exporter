@@ -83,6 +83,40 @@ pub struct Config {
     /// Settings for Home Assistant REST access. Used when `provider = "homeassistant"`.
     #[serde(default)]
     pub homeassistant: HomeAssistantConfig,
+
+    /// Optional TLS for the `/metrics` HTTP server. When set, the server listens with
+    /// HTTPS using the PEM certificate and private key.
+    #[serde(default)]
+    pub tls: Option<TlsConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TlsConfig {
+    /// PEM-encoded certificate chain (e.g. from Let's Encrypt `fullchain.pem`).
+    pub cert_file: PathBuf,
+
+    /// PEM-encoded private key matching `cert_file`.
+    pub key_file: PathBuf,
+}
+
+impl TlsConfig {
+    /// Ensure both files exist before binding.
+    pub fn validate(&self) -> Result<(), String> {
+        if !self.cert_file.is_file() {
+            return Err(format!(
+                "tls cert_file not found: {}",
+                self.cert_file.display()
+            ));
+        }
+        if !self.key_file.is_file() {
+            return Err(format!(
+                "tls key_file not found: {}",
+                self.key_file.display()
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -170,6 +204,8 @@ pub struct CliOverrides {
     pub homeassistant_token: Option<String>,
     pub homeassistant_climate_entities: Vec<String>,
     pub homeassistant_weather_entities: Vec<String>,
+    pub tls_cert_file: Option<PathBuf>,
+    pub tls_key_file: Option<PathBuf>,
 }
 
 /// Parse a duration string such as `3m` or `90s` (same syntax as config TOML).
@@ -267,7 +303,33 @@ impl Config {
                 .weather_entities
                 .clone_from(&cli.homeassistant_weather_entities);
         }
+        if cli.tls_cert_file.is_some() || cli.tls_key_file.is_some() {
+            let mut tls = self.tls.take().unwrap_or(TlsConfig {
+                cert_file: PathBuf::new(),
+                key_file: PathBuf::new(),
+            });
+            if let Some(cert_file) = &cli.tls_cert_file {
+                tls.cert_file.clone_from(cert_file);
+            }
+            if let Some(key_file) = &cli.tls_key_file {
+                tls.key_file.clone_from(key_file);
+            }
+            self.tls = Some(tls);
+        }
         self.clamp_poll_interval();
+    }
+
+    /// Validate optional TLS settings when enabled.
+    pub fn validate_tls(&self) -> Result<(), String> {
+        let Some(tls) = &self.tls else {
+            return Ok(());
+        };
+        if tls.cert_file.as_os_str().is_empty() || tls.key_file.as_os_str().is_empty() {
+            return Err(
+                "tls requires both cert_file and key_file; set both or omit [tls] entirely".into(),
+            );
+        }
+        tls.validate()
     }
 
     fn clamp_poll_interval(&mut self) {
@@ -293,6 +355,7 @@ impl Default for Config {
             beehive: BeehiveConfig::default(),
             homekit: HomeKitConfig::default(),
             homeassistant: HomeAssistantConfig::default(),
+            tls: None,
         }
     }
 }
@@ -394,6 +457,36 @@ pairing_file = "/var/lib/ecobee/pairings.json"
             ("x-ecobee-app-version".into(), "4.0.0".into())
         );
         assert!(parse_header_pair("no-equals").is_err());
+    }
+
+    #[test]
+    fn deserializes_tls_section() {
+        let cfg: Config = Figment::new()
+            .merge(Toml::string(
+                r#"
+[tls]
+cert_file = "/etc/ssl/fullchain.pem"
+key_file = "/etc/ssl/privkey.pem"
+"#,
+            ))
+            .extract()
+            .expect("figment extract");
+
+        let tls = cfg.tls.expect("tls config");
+        assert_eq!(tls.cert_file, PathBuf::from("/etc/ssl/fullchain.pem"));
+        assert_eq!(tls.key_file, PathBuf::from("/etc/ssl/privkey.pem"));
+    }
+
+    #[test]
+    fn validate_tls_requires_both_files() {
+        let cfg = Config {
+            tls: Some(TlsConfig {
+                cert_file: PathBuf::from("/missing/cert.pem"),
+                key_file: PathBuf::from("/missing/key.pem"),
+            }),
+            ..Config::default()
+        };
+        assert!(cfg.validate_tls().is_err());
     }
 
     fn tempdir() -> PathBuf {
