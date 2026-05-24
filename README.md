@@ -94,26 +94,49 @@ curl http://localhost:9098/metrics
 
 ### Docker (Alpine)
 
-Build and run with a persistent volume for the Auth0 refresh token:
+Build the image:
 
 ```sh
 docker build -t ecobee-exporter:local .
+```
 
-# One-time interactive login (opens Auth0 in your browser on the host;
-# paste the callback URL when prompted). Writes state into the volume.
+#### `docker run`
+
+The image defaults `ECOBEE_STATE_FILE` to
+`/var/lib/ecobee-exporter/state.json`. Mount a named volume or bind mount
+there so refresh tokens survive restarts.
+
+One-time interactive login — open the printed Auth0 URL in your desktop
+browser, complete MFA, copy the full callback URL from the address bar,
+and paste it at the prompt:
+
+```sh
 docker run --rm -it \
   -v ecobee-exporter-data:/var/lib/ecobee-exporter \
   --entrypoint ecobee-login \
   ecobee-exporter:local
+```
 
-# Run the exporter (metrics on :9098, state read from the volume).
+Run the exporter (metrics on `:9098`, state read from the volume):
+
+```sh
 docker run -d --name ecobee-exporter --restart unless-stopped \
   -p 9098:9098 \
   -v ecobee-exporter-data:/var/lib/ecobee-exporter \
+  -e ECOBEE_STATE_FILE=/var/lib/ecobee-exporter/state.json \
+  -e TZ=America/New_York \
   ecobee-exporter:local
 
 curl http://localhost:9098/metrics
 ```
+
+`TZ` is the standard IANA timezone name (e.g. `America/New_York`, `UTC`).
+The image ships `tzdata`; Alpine applies `TZ` to log timestamps and other
+libc local-time calls. Metrics themselves are unitless gauges — timezone
+only affects container-side logging.
+
+Other `ECOBEE_*` environment variables follow the same prefix as bare-metal
+runs (`ECOBEE_LISTEN_ADDR`, `ECOBEE_POLL_INTERVAL`, etc.).
 
 Demo mode without credentials:
 
@@ -121,11 +144,24 @@ Demo mode without credentials:
 docker run --rm -p 9098:9098 ecobee-exporter:local --demo
 ```
 
-Environment variables follow the same `ECOBEE_*` prefix as bare-metal runs
-(e.g. `ECOBEE_LISTEN_ADDR`, `ECOBEE_POLL_INTERVAL`, `ECOBEE_STATE_FILE`).
-The image defaults `ECOBEE_STATE_FILE` to
-`/var/lib/ecobee-exporter/state.json` inside the container — mount a volume
-there so refresh tokens survive restarts.
+#### `docker compose`
+
+Copy `docker-compose.example.yml` and adjust the image tag if needed, then:
+
+```sh
+# One-time Auth0 bootstrap (interactive; same browser flow as above).
+docker compose -f docker-compose.example.yml run --rm -it \
+  --entrypoint ecobee-login ecobee-exporter
+
+# Start the exporter in the background.
+docker compose -f docker-compose.example.yml up -d
+
+curl http://localhost:9098/metrics
+```
+
+Uncomment `TZ` in the compose file (or add it under `environment`) to set
+the container timezone. The example file also documents
+`ECOBEE_STATE_FILE` and other optional overrides.
 
 A TOML config file is optional. The defaults — base URL
 `https://api.ecobee.com/1`, port `9098`, 3-minute poll cadence — are

@@ -13,7 +13,10 @@ RUN cargo build --locked --release --bin ecobee-exporter --bin ecobee-login
 
 FROM alpine:3.23
 
-RUN apk add --no-cache ca-certificates \
+# tzdata lets Alpine honor the standard TZ env var (e.g. America/New_York)
+# for log timestamps and any libc localtime() callers. Set at runtime:
+#   docker run -e TZ=America/New_York ...
+RUN apk add --no-cache ca-certificates tzdata \
     && adduser -D -H -u 1000 -s /sbin/nologin ecobee
 
 COPY --from=builder /build/target/release/ecobee-exporter /usr/local/bin/ecobee-exporter

@@ -18,6 +18,8 @@ services:
       - ecobee-exporter-data:/var/lib/ecobee-exporter
     environment:
       ECOBEE_STATE_FILE: /var/lib/ecobee-exporter/state.json
+      # IANA timezone for container logs (tzdata is installed in the image).
+      # TZ: America/New_York
       # ECOBEE_LISTEN_ADDR: 0.0.0.0:9098
       # ECOBEE_POLL_INTERVAL: 3m
 
