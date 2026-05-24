@@ -1,4 +1,9 @@
 //! Local HomeKit provider for ecobee thermostats (native Rust HAP controller).
+//!
+//! **Status: untested.** Pair-verify against real ecobees has not been validated
+//! in production; concurrent Home Assistant polling with HA-imported keys is a
+//! known failure mode. Prefer `provider = "homeassistant"` or `provider = "beehive"`
+//! until this backend is confirmed working in your environment.
 
 pub mod ha_import;
 pub mod translate;

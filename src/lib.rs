@@ -12,6 +12,7 @@ pub mod beehive;
 pub mod collector;
 pub mod config;
 pub mod homekit;
+pub mod homeassistant;
 pub mod metrics;
 pub mod model;
 pub mod provider;

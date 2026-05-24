@@ -5,6 +5,7 @@
 //!   2. `ecobee-exporter.toml` in the current directory (if present)
 //!   3. file at `$ECOBEE_EXPORTER_CONFIG` (if set)
 //!   4. environment variables prefixed `ECOBEE_` (e.g. `ECOBEE_LISTEN_ADDR`)
+//!   5. CLI flags on `ecobee-exporter` (each mirrors its `ECOBEE_*` env var)
 //!
 //! Sensitive values (refresh token, access token, MFA seeds) should live in
 //! the config file with `chmod 600`, not env vars, so they don't leak into
@@ -24,6 +25,7 @@ pub enum ProviderKind {
     #[default]
     Beehive,
     Homekit,
+    Homeassistant,
 }
 
 impl FromStr for ProviderKind {
@@ -33,8 +35,9 @@ impl FromStr for ProviderKind {
         match s.trim().to_ascii_lowercase().as_str() {
             "beehive" => Ok(Self::Beehive),
             "homekit" => Ok(Self::Homekit),
+            "homeassistant" | "ha" => Ok(Self::Homeassistant),
             other => Err(format!(
-                "invalid provider {other:?}; expected `beehive` or `homekit`"
+                "invalid provider {other:?}; expected `beehive`, `homekit`, or `homeassistant`"
             )),
         }
     }
@@ -76,6 +79,10 @@ pub struct Config {
     /// Settings for native HomeKit access. Used when `provider = "homekit"`.
     #[serde(default)]
     pub homekit: HomeKitConfig,
+
+    /// Settings for Home Assistant REST access. Used when `provider = "homeassistant"`.
+    #[serde(default)]
+    pub homeassistant: HomeAssistantConfig,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -124,6 +131,64 @@ impl Default for HomeKitConfig {
     }
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HomeAssistantConfig {
+    /// Home Assistant base URL, e.g. `http://homeassistant.local:8123`.
+    #[serde(default)]
+    pub url: String,
+
+    /// Long-lived access token (Profile → Security → Long-Lived Access Tokens).
+    #[serde(default)]
+    pub token: String,
+
+    /// Explicit climate entity IDs to export. When empty, every `climate.*` entity is used.
+    #[serde(default)]
+    pub climate_entities: Vec<String>,
+
+    /// Explicit `weather.*` entity IDs. When empty, weather is auto-linked by entity-id
+    /// stem (e.g. `weather.ecobee` for all ecobees, or the sole `weather.*` on the instance).
+    #[serde(default)]
+    pub weather_entities: Vec<String>,
+}
+
+/// CLI / env overrides applied after [`Config::load`]. Each field mirrors an
+/// `ECOBEE_*` environment variable exposed as a flag on `ecobee-exporter`.
+#[derive(Debug, Default, Clone)]
+pub struct CliOverrides {
+    pub demo: bool,
+    pub provider: Option<ProviderKind>,
+    pub listen_addr: Option<SocketAddr>,
+    pub poll_interval: Option<Duration>,
+    pub state_file: Option<PathBuf>,
+    pub beehive_endpoint: Option<String>,
+    pub beehive_user_agent: Option<String>,
+    pub beehive_refresh_token: Option<String>,
+    pub beehive_headers: Vec<(String, String)>,
+    pub homekit_pairing_file: Option<PathBuf>,
+    pub homeassistant_url: Option<String>,
+    pub homeassistant_token: Option<String>,
+    pub homeassistant_climate_entities: Vec<String>,
+    pub homeassistant_weather_entities: Vec<String>,
+}
+
+/// Parse a duration string such as `3m` or `90s` (same syntax as config TOML).
+pub fn parse_poll_interval(s: &str) -> Result<Duration, String> {
+    humantime::parse_duration(s).map_err(|e| e.to_string())
+}
+
+/// Parse a `KEY=VALUE` pair for `--beehive-header`.
+pub fn parse_header_pair(s: &str) -> Result<(String, String), String> {
+    let (key, value) = s
+        .split_once('=')
+        .ok_or_else(|| format!("expected KEY=VALUE, got {s:?}"))?;
+    let key = key.trim();
+    if key.is_empty() {
+        return Err(format!("header key must not be empty in {s:?}"));
+    }
+    Ok((key.to_string(), value.to_string()))
+}
+
 impl Config {
     fn default_listen_addr() -> SocketAddr {
         "0.0.0.0:9098"
@@ -149,17 +214,71 @@ impl Config {
         }
         fig = fig.merge(Env::prefixed("ECOBEE_").split("__"));
         let mut cfg: Config = fig.extract().map_err(Box::new)?;
+        cfg.clamp_poll_interval();
+        Ok(cfg)
+    }
 
+    /// Apply CLI flags (and their mirrored `ECOBEE_*` env vars) on top of
+    /// layered config from [`Self::load`].
+    pub fn apply_cli_overrides(&mut self, cli: &CliOverrides) {
+        if cli.demo {
+            self.demo = true;
+        }
+        if let Some(provider) = cli.provider {
+            self.provider = provider;
+        }
+        if let Some(listen_addr) = cli.listen_addr {
+            self.listen_addr = listen_addr;
+        }
+        if let Some(poll_interval) = cli.poll_interval {
+            self.poll_interval = poll_interval;
+        }
+        if let Some(state_file) = &cli.state_file {
+            self.state_file.clone_from(state_file);
+        }
+        if let Some(endpoint) = &cli.beehive_endpoint {
+            self.beehive.endpoint = Some(endpoint.clone());
+        }
+        if let Some(user_agent) = &cli.beehive_user_agent {
+            self.beehive.user_agent = Some(user_agent.clone());
+        }
+        if let Some(refresh_token) = &cli.beehive_refresh_token {
+            self.beehive.refresh_token = Some(refresh_token.clone());
+        }
+        if !cli.beehive_headers.is_empty() {
+            self.beehive.extra_headers.clone_from(&cli.beehive_headers);
+        }
+        if let Some(pairing_file) = &cli.homekit_pairing_file {
+            self.homekit.pairing_file.clone_from(pairing_file);
+        }
+        if let Some(url) = &cli.homeassistant_url {
+            self.homeassistant.url.clone_from(url);
+        }
+        if let Some(token) = &cli.homeassistant_token {
+            self.homeassistant.token.clone_from(token);
+        }
+        if !cli.homeassistant_climate_entities.is_empty() {
+            self.homeassistant
+                .climate_entities
+                .clone_from(&cli.homeassistant_climate_entities);
+        }
+        if !cli.homeassistant_weather_entities.is_empty() {
+            self.homeassistant
+                .weather_entities
+                .clone_from(&cli.homeassistant_weather_entities);
+        }
+        self.clamp_poll_interval();
+    }
+
+    fn clamp_poll_interval(&mut self) {
         let floor = Duration::from_mins(1);
-        if cfg.poll_interval < floor {
+        if self.poll_interval < floor {
             tracing::warn!(
-                requested = ?cfg.poll_interval,
+                requested = ?self.poll_interval,
                 "poll_interval below 60s clamped to 60s; ecobee only refreshes data every ~3 minutes"
             );
-            cfg.poll_interval = floor;
+            self.poll_interval = floor;
         }
-
-        Ok(cfg)
     }
 }
 
@@ -173,6 +292,7 @@ impl Default for Config {
             provider: ProviderKind::Beehive,
             beehive: BeehiveConfig::default(),
             homekit: HomeKitConfig::default(),
+            homeassistant: HomeAssistantConfig::default(),
         }
     }
 }
@@ -198,6 +318,11 @@ mod tests {
             "homekit".parse::<ProviderKind>().unwrap(),
             ProviderKind::Homekit
         );
+        assert_eq!(
+            "homeassistant".parse::<ProviderKind>().unwrap(),
+            ProviderKind::Homeassistant
+        );
+        assert_eq!("ha".parse::<ProviderKind>().unwrap(), ProviderKind::Homeassistant);
         assert!("cloud".parse::<ProviderKind>().is_err());
     }
 
@@ -228,6 +353,38 @@ pairing_file = "/var/lib/ecobee/pairings.json"
         std::fs::write(&path, r#"poll_interval = "15s""#).unwrap();
         let cfg = Config::load(Some(&path)).expect("load config");
         assert_eq!(cfg.poll_interval, Duration::from_mins(1));
+    }
+
+    #[test]
+    fn apply_cli_overrides_takes_precedence() {
+        let mut cfg = Config::default();
+        cfg.apply_cli_overrides(&CliOverrides {
+            listen_addr: Some("127.0.0.1:9099".parse().unwrap()),
+            poll_interval: Some(Duration::from_mins(5)),
+            provider: Some(ProviderKind::Homekit),
+            homekit_pairing_file: Some(PathBuf::from("/tmp/pairings.json")),
+            beehive_endpoint: Some("https://example.test/1".to_string()),
+            beehive_headers: vec![("x-test".into(), "1".into())],
+            ..CliOverrides::default()
+        });
+        assert_eq!(cfg.listen_addr, "127.0.0.1:9099".parse().unwrap());
+        assert_eq!(cfg.poll_interval, Duration::from_mins(5));
+        assert_eq!(cfg.provider, ProviderKind::Homekit);
+        assert_eq!(cfg.homekit.pairing_file, PathBuf::from("/tmp/pairings.json"));
+        assert_eq!(
+            cfg.beehive.endpoint.as_deref(),
+            Some("https://example.test/1")
+        );
+        assert_eq!(cfg.beehive.extra_headers, vec![("x-test".into(), "1".into())]);
+    }
+
+    #[test]
+    fn parse_header_pair_splits_on_first_equals() {
+        assert_eq!(
+            parse_header_pair("x-ecobee-app-version=4.0.0").unwrap(),
+            ("x-ecobee-app-version".into(), "4.0.0".into())
+        );
+        assert!(parse_header_pair("no-equals").is_err());
     }
 
     fn tempdir() -> PathBuf {

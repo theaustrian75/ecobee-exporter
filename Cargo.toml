@@ -17,6 +17,7 @@ axum = "0.8.9"
 base64 = "0.22.1"
 clap = { version = "4.6.1", features = ["derive", "env"] }
 figment = { version = "0.10.19", features = ["env", "toml"] }
+humantime = "2.3.0"
 humantime-serde = "1.1.1"
 prometheus = "0.14.0"
 rand = "0.10.1"

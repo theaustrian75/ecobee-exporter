@@ -1,0 +1,51 @@
+[
+  {
+    "entity_id": "climate.living_room",
+    "state": "heat",
+    "attributes": {
+      "friendly_name": "Living Room",
+      "current_temperature": 72.1,
+      "temperature": 70.0,
+      "target_temp_high": 74.0,
+      "target_temp_low": 68.0,
+      "humidity": 43,
+      "hvac_action": "heating",
+      "equipment_running": "heatPump,fan",
+      "preset_mode": "home",
+      "temperature_unit": "°F"
+    }
+  },
+  {
+    "entity_id": "sensor.living_room_bedroom_temperature",
+    "state": "68.5",
+    "attributes": {
+      "friendly_name": "Bedroom",
+      "device_class": "temperature",
+      "unit_of_measurement": "°F"
+    }
+  },
+  {
+    "entity_id": "weather.ecobee",
+    "state": "cloudy",
+    "attributes": {
+      "friendly_name": "Ecobee Weather",
+      "temperature": 64.5,
+      "humidity": 78,
+      "pressure": 1017.0,
+      "wind_speed": 4.0,
+      "wind_bearing": 327.0,
+      "dew_point": 58.2,
+      "visibility": 16.0,
+      "visibility_unit": "km",
+      "wind_speed_unit": "mph",
+      "temperature_unit": "°F",
+      "forecast": [
+        {
+          "temperature": 72.0,
+          "templow": 55.0,
+          "precipitation_probability": 20
+        }
+      ]
+    }
+  }
+]

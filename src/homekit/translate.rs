@@ -332,6 +332,6 @@ mod tests {
         assert!(rendered.contains("ecobee_actual_temperature"));
         assert!(rendered.contains("current_hvac_mode=\"heat\""));
         assert!(rendered.contains("sensor_name=\"Bedroom\""));
-        assert!(!rendered.contains("ecobee_outdoor_temperature"));
+        assert!(!rendered.contains("ecobee_forecast_temperature"));
     }
 }

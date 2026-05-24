@@ -36,16 +36,16 @@ async fn fake_provider_round_trip_renders_billykwooten_parity_metrics() {
         "ecobee_humidity",
         "ecobee_occupancy",
         "ecobee_in_use",
-        "ecobee_outdoor_temperature",
-        "ecobee_outdoor_humidity",
-        "ecobee_outdoor_pressure_mb",
-        "ecobee_outdoor_dewpoint",
-        "ecobee_outdoor_wind_speed_mph",
-        "ecobee_outdoor_wind_bearing_degrees",
-        "ecobee_outdoor_visibility_meters",
-        "ecobee_outdoor_probability_of_precipitation",
-        "ecobee_outdoor_temp_high",
-        "ecobee_outdoor_temp_low",
+        "ecobee_forecast_temperature",
+        "ecobee_forecast_relative_humidity",
+        "ecobee_forecast_pressure_mb",
+        "ecobee_forecast_dewpoint",
+        "ecobee_forecast_wind_speed_mph",
+        "ecobee_forecast_wind_bearing_degrees",
+        "ecobee_forecast_visibility",
+        "ecobee_forecast_probability_of_precipitation",
+        "ecobee_forecast_temp_high",
+        "ecobee_forecast_temp_low",
         "ecobee_equipment_running",
         "ecobee_actual_humidity",
         "ecobee_desired_humidity",
@@ -78,7 +78,7 @@ async fn fake_provider_round_trip_renders_billykwooten_parity_metrics() {
     );
     // Demo windGust is None — series must NOT be emitted.
     assert!(
-        !rendered.contains("ecobee_outdoor_wind_gust_mph{"),
+        !rendered.contains("ecobee_forecast_wind_gust_mph{"),
         "wind gust should be suppressed when not reported"
     );
 

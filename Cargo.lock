@@ -590,6 +590,7 @@ dependencies = [
  "clap",
  "figment",
  "housekey",
+ "humantime",
  "humantime-serde",
  "prometheus",
  "rand 0.10.1",

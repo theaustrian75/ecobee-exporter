@@ -17,7 +17,7 @@ demo = false
 # Data source: "beehive" (cloud Auth0 API, default) or "homekit" (local
 # HomeKit HAP — see README "HomeKit backend"). Same values work as
 # `--provider` on the CLI or `ECOBEE_PROVIDER` in the environment.
-# provider = "homekit"
+# provider = "homeassistant"
 
 [beehive]
 # Data API base URL. The default (api.ecobee.com/1) is what the
@@ -39,3 +39,9 @@ demo = false
 
 # [homekit]
 # pairing_file = "./homekit-pairings.json"
+
+# [homeassistant]
+# url = "http://homeassistant.local:8123"
+# token = "…"
+# climate_entities = ["climate.living_room"]
+# weather_entities = ["weather.ecobee"]

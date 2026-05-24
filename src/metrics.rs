@@ -24,7 +24,7 @@ use prometheus::{Gauge, GaugeVec, IntCounter, Opts, Registry, TextEncoder};
 use crate::model::Thermostat;
 
 const RUNTIME_LABELS: &[&str] = &["thermostat_id", "thermostat_name"];
-const WEATHER_LABELS: &[&str] = &["thermostat_id", "thermostat_name", "station"];
+const FORECAST_LABELS: &[&str] = &["thermostat_id", "thermostat_name", "station"];
 const SENSOR_LABELS: &[&str] = &[
     "thermostat_id",
     "thermostat_name",
@@ -85,17 +85,17 @@ pub struct Metrics {
     occupancy: GaugeVec,
     in_use: GaugeVec,
 
-    outdoor_temperature: GaugeVec,
-    outdoor_humidity: GaugeVec,
-    outdoor_pressure_mb: GaugeVec,
-    outdoor_dewpoint: GaugeVec,
-    outdoor_wind_speed_mph: GaugeVec,
-    outdoor_wind_gust_mph: GaugeVec,
-    outdoor_wind_bearing_degrees: GaugeVec,
-    outdoor_visibility_meters: GaugeVec,
-    outdoor_probability_of_precipitation: GaugeVec,
-    outdoor_temp_high: GaugeVec,
-    outdoor_temp_low: GaugeVec,
+    forecast_temperature: GaugeVec,
+    forecast_relative_humidity: GaugeVec,
+    forecast_pressure_mb: GaugeVec,
+    forecast_dewpoint: GaugeVec,
+    forecast_wind_speed_mph: GaugeVec,
+    forecast_wind_gust_mph: GaugeVec,
+    forecast_wind_bearing_degrees: GaugeVec,
+    forecast_visibility: GaugeVec,
+    forecast_probability_of_precipitation: GaugeVec,
+    forecast_temp_high: GaugeVec,
+    forecast_temp_low: GaugeVec,
 
     equipment_running: GaugeVec,
 
@@ -199,73 +199,79 @@ impl Metrics {
             SENSOR_LABELS,
         )?;
 
-        let outdoor_temperature = GaugeVec::new(
+        let forecast_temperature = GaugeVec::new(
             Opts::new(
-                "ecobee_outdoor_temperature",
-                "outdoor temperature, degrees (Fahrenheit for US accounts)",
+                "ecobee_forecast_temperature",
+                "outdoor / forecast temperature, degrees (Fahrenheit for US accounts)",
             ),
-            WEATHER_LABELS,
+            FORECAST_LABELS,
         )?;
-        let outdoor_humidity = GaugeVec::new(
+        let forecast_relative_humidity = GaugeVec::new(
             Opts::new(
-                "ecobee_outdoor_humidity",
-                "outdoor relative humidity, percent",
+                "ecobee_forecast_relative_humidity",
+                "outdoor / forecast relative humidity, percent",
             ),
-            WEATHER_LABELS,
+            FORECAST_LABELS,
         )?;
-        let outdoor_pressure_mb = GaugeVec::new(
+        let forecast_pressure_mb = GaugeVec::new(
             Opts::new(
-                "ecobee_outdoor_pressure_mb",
-                "outdoor sea-level pressure, millibars (equivalent to hPa)",
+                "ecobee_forecast_pressure_mb",
+                "outdoor / forecast sea-level pressure, millibars (equivalent to hPa)",
             ),
-            WEATHER_LABELS,
+            FORECAST_LABELS,
         )?;
-        let outdoor_dewpoint = GaugeVec::new(
-            Opts::new("ecobee_outdoor_dewpoint", "outdoor dewpoint, degrees"),
-            WEATHER_LABELS,
+        let forecast_dewpoint = GaugeVec::new(
+            Opts::new("ecobee_forecast_dewpoint", "outdoor / forecast dewpoint, degrees"),
+            FORECAST_LABELS,
         )?;
-        let outdoor_wind_speed_mph = GaugeVec::new(
+        let forecast_wind_speed_mph = GaugeVec::new(
             Opts::new(
-                "ecobee_outdoor_wind_speed_mph",
-                "wind speed, miles per hour",
+                "ecobee_forecast_wind_speed_mph",
+                "outdoor / forecast wind speed, miles per hour",
             ),
-            WEATHER_LABELS,
+            FORECAST_LABELS,
         )?;
-        let outdoor_wind_gust_mph = GaugeVec::new(
-            Opts::new("ecobee_outdoor_wind_gust_mph", "wind gust, miles per hour"),
-            WEATHER_LABELS,
-        )?;
-        let outdoor_wind_bearing_degrees = GaugeVec::new(
+        let forecast_wind_gust_mph = GaugeVec::new(
             Opts::new(
-                "ecobee_outdoor_wind_bearing_degrees",
-                "wind bearing, compass degrees (0=N, 90=E)",
+                "ecobee_forecast_wind_gust_mph",
+                "outdoor / forecast wind gust, miles per hour",
             ),
-            WEATHER_LABELS,
+            FORECAST_LABELS,
         )?;
-        let outdoor_visibility_meters = GaugeVec::new(
-            Opts::new("ecobee_outdoor_visibility_meters", "visibility, meters"),
-            WEATHER_LABELS,
-        )?;
-        let outdoor_probability_of_precipitation = GaugeVec::new(
+        let forecast_wind_bearing_degrees = GaugeVec::new(
             Opts::new(
-                "ecobee_outdoor_probability_of_precipitation",
-                "probability of precipitation, percent (0-100)",
+                "ecobee_forecast_wind_bearing_degrees",
+                "outdoor / forecast wind bearing, compass degrees (0=N, 90=E)",
             ),
-            WEATHER_LABELS,
+            FORECAST_LABELS,
         )?;
-        let outdoor_temp_high = GaugeVec::new(
+        let forecast_visibility = GaugeVec::new(
             Opts::new(
-                "ecobee_outdoor_temp_high",
+                "ecobee_forecast_visibility",
+                "outdoor / forecast visibility, meters",
+            ),
+            FORECAST_LABELS,
+        )?;
+        let forecast_probability_of_precipitation = GaugeVec::new(
+            Opts::new(
+                "ecobee_forecast_probability_of_precipitation",
+                "outdoor / forecast probability of precipitation, percent (0-100)",
+            ),
+            FORECAST_LABELS,
+        )?;
+        let forecast_temp_high = GaugeVec::new(
+            Opts::new(
+                "ecobee_forecast_temp_high",
                 "forecast daily high temperature, degrees",
             ),
-            WEATHER_LABELS,
+            FORECAST_LABELS,
         )?;
-        let outdoor_temp_low = GaugeVec::new(
+        let forecast_temp_low = GaugeVec::new(
             Opts::new(
-                "ecobee_outdoor_temp_low",
+                "ecobee_forecast_temp_low",
                 "forecast daily low temperature, degrees",
             ),
-            WEATHER_LABELS,
+            FORECAST_LABELS,
         )?;
 
         let equipment_running = GaugeVec::new(
@@ -415,17 +421,17 @@ impl Metrics {
         registry.register(Box::new(humidity.clone()))?;
         registry.register(Box::new(occupancy.clone()))?;
         registry.register(Box::new(in_use.clone()))?;
-        registry.register(Box::new(outdoor_temperature.clone()))?;
-        registry.register(Box::new(outdoor_humidity.clone()))?;
-        registry.register(Box::new(outdoor_pressure_mb.clone()))?;
-        registry.register(Box::new(outdoor_dewpoint.clone()))?;
-        registry.register(Box::new(outdoor_wind_speed_mph.clone()))?;
-        registry.register(Box::new(outdoor_wind_gust_mph.clone()))?;
-        registry.register(Box::new(outdoor_wind_bearing_degrees.clone()))?;
-        registry.register(Box::new(outdoor_visibility_meters.clone()))?;
-        registry.register(Box::new(outdoor_probability_of_precipitation.clone()))?;
-        registry.register(Box::new(outdoor_temp_high.clone()))?;
-        registry.register(Box::new(outdoor_temp_low.clone()))?;
+        registry.register(Box::new(forecast_temperature.clone()))?;
+        registry.register(Box::new(forecast_relative_humidity.clone()))?;
+        registry.register(Box::new(forecast_pressure_mb.clone()))?;
+        registry.register(Box::new(forecast_dewpoint.clone()))?;
+        registry.register(Box::new(forecast_wind_speed_mph.clone()))?;
+        registry.register(Box::new(forecast_wind_gust_mph.clone()))?;
+        registry.register(Box::new(forecast_wind_bearing_degrees.clone()))?;
+        registry.register(Box::new(forecast_visibility.clone()))?;
+        registry.register(Box::new(forecast_probability_of_precipitation.clone()))?;
+        registry.register(Box::new(forecast_temp_high.clone()))?;
+        registry.register(Box::new(forecast_temp_low.clone()))?;
         registry.register(Box::new(equipment_running.clone()))?;
         registry.register(Box::new(actual_humidity.clone()))?;
         registry.register(Box::new(desired_humidity.clone()))?;
@@ -460,17 +466,17 @@ impl Metrics {
             humidity,
             occupancy,
             in_use,
-            outdoor_temperature,
-            outdoor_humidity,
-            outdoor_pressure_mb,
-            outdoor_dewpoint,
-            outdoor_wind_speed_mph,
-            outdoor_wind_gust_mph,
-            outdoor_wind_bearing_degrees,
-            outdoor_visibility_meters,
-            outdoor_probability_of_precipitation,
-            outdoor_temp_high,
-            outdoor_temp_low,
+            forecast_temperature,
+            forecast_relative_humidity,
+            forecast_pressure_mb,
+            forecast_dewpoint,
+            forecast_wind_speed_mph,
+            forecast_wind_gust_mph,
+            forecast_wind_bearing_degrees,
+            forecast_visibility,
+            forecast_probability_of_precipitation,
+            forecast_temp_high,
+            forecast_temp_low,
             equipment_running,
             actual_humidity,
             desired_humidity,
@@ -745,51 +751,51 @@ impl Metrics {
         let labels = [t.identifier.as_str(), t.name.as_str(), w.station.as_str()];
 
         if let Some(v) = w.temperature {
-            self.outdoor_temperature.with_label_values(&labels).set(v);
+            self.forecast_temperature.with_label_values(&labels).set(v);
         }
         if let Some(v) = w.humidity {
-            self.outdoor_humidity
+            self.forecast_relative_humidity
                 .with_label_values(&labels)
                 .set(f64::from(v));
         }
         if let Some(v) = w.pressure_mb {
-            self.outdoor_pressure_mb
+            self.forecast_pressure_mb
                 .with_label_values(&labels)
                 .set(f64::from(v));
         }
         if let Some(v) = w.dewpoint {
-            self.outdoor_dewpoint.with_label_values(&labels).set(v);
+            self.forecast_dewpoint.with_label_values(&labels).set(v);
         }
         if let Some(v) = w.wind_speed_mph {
-            self.outdoor_wind_speed_mph
+            self.forecast_wind_speed_mph
                 .with_label_values(&labels)
                 .set(f64::from(v));
         }
         if let Some(v) = w.wind_gust_mph {
-            self.outdoor_wind_gust_mph
+            self.forecast_wind_gust_mph
                 .with_label_values(&labels)
                 .set(f64::from(v));
         }
         if let Some(v) = w.wind_bearing_degrees {
-            self.outdoor_wind_bearing_degrees
+            self.forecast_wind_bearing_degrees
                 .with_label_values(&labels)
                 .set(f64::from(v));
         }
         if let Some(v) = w.visibility_meters {
-            self.outdoor_visibility_meters
+            self.forecast_visibility
                 .with_label_values(&labels)
                 .set(f64::from(v));
         }
         if let Some(v) = w.probability_of_precipitation {
-            self.outdoor_probability_of_precipitation
+            self.forecast_probability_of_precipitation
                 .with_label_values(&labels)
                 .set(f64::from(v));
         }
         if let Some(v) = w.temp_high {
-            self.outdoor_temp_high.with_label_values(&labels).set(v);
+            self.forecast_temp_high.with_label_values(&labels).set(v);
         }
         if let Some(v) = w.temp_low {
-            self.outdoor_temp_low.with_label_values(&labels).set(v);
+            self.forecast_temp_low.with_label_values(&labels).set(v);
         }
     }
 

@@ -103,7 +103,7 @@ async fn homekit_snapshot_renders_core_metrics_without_weather() {
         "expected bedroom sensor series"
     );
     assert!(
-        !rendered.contains("ecobee_outdoor_temperature"),
+        !rendered.contains("ecobee_forecast_temperature"),
         "HomeKit snapshot should not emit weather metrics"
     );
 }
