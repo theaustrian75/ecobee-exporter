@@ -249,8 +249,8 @@ mod tests {
     #[test]
     fn celsius_to_tenths_f_rounds_correctly() {
         assert_eq!(celsius_to_tenths_f(0.0), 320);
-        assert_eq!(celsius_to_tenths_f(22.27777777777778), 721);
-        assert_eq!(celsius_to_tenths_f(21.11111111111111), 700);
+        assert_eq!(celsius_to_tenths_f(22.277_777_777_777_78), 721);
+        assert_eq!(celsius_to_tenths_f(21.111_111_111_111_11), 700);
     }
 
     #[test]
@@ -305,9 +305,9 @@ mod tests {
         let accessory = Accessory {
             aid: 1,
             services: vec![thermostat_service(
-                22.27777777777778,
+                22.277_777_777_777_78,
                 20.0,
-                24.444444444444443,
+                24.444_444_444_444_443,
                 43.0,
                 3,
                 2,

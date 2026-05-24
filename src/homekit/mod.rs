@@ -1,5 +1,6 @@
 //! Local HomeKit provider for ecobee thermostats (native Rust HAP controller).
 
+pub mod ha_import;
 pub mod translate;
 
 use std::path::PathBuf;
@@ -33,6 +34,22 @@ impl HomeKitProvider {
 
     pub fn pairing_file(cfg: &HomeKitConfig) -> PathBuf {
         cfg.pairing_file.clone()
+    }
+}
+
+#[async_trait]
+impl ThermostatProvider for HomeKitProvider {
+    async fn fetch(&self) -> Result<Vec<Thermostat>, ProviderError> {
+        let controller = self.controller.lock().await;
+        let snapshots = controller
+            .read_all_accessories()
+            .await
+            .map_err(|e| ProviderError::Upstream(format!("homekit read failed: {e}")))?;
+
+        Ok(snapshots
+            .into_iter()
+            .flat_map(|(alias, accessories)| translate::translate_accessories(&alias, &accessories))
+            .collect())
     }
 }
 
@@ -99,21 +116,5 @@ mod tests {
             HomeKitProvider::new(&cfg),
             Err(ProviderError::Auth(_))
         ));
-    }
-}
-
-#[async_trait]
-impl ThermostatProvider for HomeKitProvider {
-    async fn fetch(&self) -> Result<Vec<Thermostat>, ProviderError> {
-        let controller = self.controller.lock().await;
-        let snapshots = controller
-            .read_all_accessories()
-            .await
-            .map_err(|e| ProviderError::Upstream(format!("homekit read failed: {e}")))?;
-
-        Ok(snapshots
-            .into_iter()
-            .flat_map(|(alias, accessories)| translate::translate_accessories(&alias, &accessories))
-            .collect())
     }
 }

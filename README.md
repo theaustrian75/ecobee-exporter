@@ -21,7 +21,7 @@ End-to-end functional for both backends.
 - Configuration via TOML file, environment variables, and CLI flags.
 - `--demo` mode that serves canned data without credentials.
 - **Beehive:** Auth0 + PKCE one-time login (`ecobee-login`), refresh-token rotation, mode-0600 state file, full billykwooten-compatible metric set.
-- **HomeKit:** one-time LAN pairing (`ecobee-homekit-pair`), persistent pairing keys, core thermostat + sensor metrics over HAP.
+- **HomeKit:** one-time LAN pairing (`ecobee-homekit-pair`), HA pairing import (`ecobee-homekit-import-ha`), persistent pairing keys, core thermostat + sensor metrics over HAP.
 
 ## Demo mode (no credentials)
 
@@ -163,6 +163,25 @@ cargo run --bin ecobee-homekit-pair -- \
 
 Writes pairing keys to `./homekit-pairings.json`. Override with `--pairing-file` or `ECOBEE_HOMEKIT_PAIRING_FILE`. Treat the file like a secret (`chmod 600`).
 
+**Alternative: import from Home Assistant**
+
+If the thermostat is already paired to Home Assistant's **HomeKit Device** integration (`homekit_controller`), you can copy HA's pairing keys instead of re-pairing:
+
+```sh
+# Copy core.config_entries off the HA host, e.g.:
+#   scp ha:/config/.storage/core.config_entries ./ha-core.config_entries
+
+cargo run --bin ecobee-homekit-import-ha -- \
+  --ha-config ./ha-core.config_entries \
+  --pairing-file ./homekit-pairings.json \
+  --entry-id a1b2c3d4e5f60718293a4b5c6d7e8f90 \
+  --alias ecobee
+```
+
+Use `--dry-run` to preview imports without writing. When HA titles do not contain `ecobee` (common for room names like "Main Floor"), add `--all` to import every HomeKit Controller IP pairing in the file. Use `--entry-id` when multiple thermostats are present.
+
+This reuses Home Assistant's HomeKit controller identity. Avoid polling the same thermostat from HA and this exporter at the same time — concurrent connections can conflict.
+
 **3. Configure**
 
 ```toml
@@ -215,7 +234,7 @@ Layered, lowest-to-highest precedence:
 | `state_file`            | `./ecobee-exporter.state.json` | Beehive refresh tokens (`ecobee-login`).                          |
 | `demo`                  | `false`                        | Serve canned data; no upstream calls.                             |
 | `provider`              | `beehive`                      | `beehive` (cloud) or `homekit` (local LAN). Also `--provider` or `ECOBEE_PROVIDER`. |
-| `homekit.pairing_file`  | `./homekit-pairings.json`      | HomeKit keys from `ecobee-homekit-pair`. `chmod 600` recommended. |
+| `homekit.pairing_file`  | `./homekit-pairings.json`      | HomeKit keys from `ecobee-homekit-pair` or `ecobee-homekit-import-ha`. `chmod 600` recommended. |
 | `beehive.endpoint`      | `https://api.ecobee.com/1`     | Data API base URL.                                                |
 | `beehive.user_agent`    | `ecobee-exporter/0.1.0`        | Override to mimic the mobile app if needed.                       |
 | `beehive.extra_headers` | `[]`                           | `[key, value]` pairs added to every request.                      |

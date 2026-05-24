@@ -216,6 +216,11 @@ impl Controller {
         self.save()?;
         Ok(())
     }
+
+    /// Insert or replace a paired device in memory (call [`Self::save`] to persist).
+    pub fn insert_paired(&mut self, device: PairedDevice) {
+        self.paired.insert(device.alias.clone(), device);
+    }
 }
 
 fn random_pairing_id() -> String {
