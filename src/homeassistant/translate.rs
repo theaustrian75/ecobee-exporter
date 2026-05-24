@@ -8,12 +8,13 @@ use crate::model::{
     HvacMode, Program, RemoteSensor, Runtime, SensorCapability, Settings, Thermostat, Weather,
 };
 
-use super::client::HaState;
+use super::client::{DeviceGraph, HaState};
 
 pub fn translate_states(
     states: &[HaState],
     climate_entities: &[String],
     weather_entities: &[String],
+    device_graph: &DeviceGraph,
 ) -> Vec<Thermostat> {
     let by_id: HashMap<&str, &HaState> = states
         .iter()
@@ -40,7 +41,7 @@ pub fn translate_states(
             let stem = entity_stem(&climate.entity_id)?;
             let name = attr_string(&climate.attributes, "friendly_name")
                 .unwrap_or_else(|| humanize_stem(stem));
-            let sensors = collect_related_sensors(states, stem, &name);
+            let sensors = collect_related_sensors(states, climate, stem, &name, device_graph);
             let linked_weather = resolve_weather_state(&weather, weather_entities, stem, &name)
                 .map(translate_weather);
 
@@ -97,9 +98,17 @@ fn build_thermostat(
     }
 }
 
-fn collect_related_sensors(states: &[HaState], stem: &str, thermostat_name: &str) -> Vec<RemoteSensor> {
+fn collect_related_sensors(
+    states: &[HaState],
+    climate: &HaState,
+    stem: &str,
+    thermostat_name: &str,
+    device_graph: &DeviceGraph,
+) -> Vec<RemoteSensor> {
     let mut seen = HashSet::new();
     let mut out = Vec::new();
+    let related_devices = device_graph.related_device_ids(&climate.entity_id);
+    let use_device_matching = !related_devices.is_empty();
 
     for state in states {
         let Some(domain) = domain(state) else {
@@ -108,7 +117,15 @@ fn collect_related_sensors(states: &[HaState], stem: &str, thermostat_name: &str
         if !matches!(domain, "sensor" | "binary_sensor") {
             continue;
         }
-        if !entity_relates_to_thermostat(&state.entity_id, stem, thermostat_name) {
+        if is_blocked_entity(&state.entity_id) {
+            continue;
+        }
+        let matches = if use_device_matching {
+            device_graph.entity_on_devices(&state.entity_id, &related_devices)
+        } else {
+            entity_relates_to_thermostat(&state.entity_id, stem, thermostat_name)
+        };
+        if !matches {
             continue;
         }
         if !seen.insert(state.entity_id.clone()) {
@@ -122,14 +139,47 @@ fn collect_related_sensors(states: &[HaState], stem: &str, thermostat_name: &str
     out
 }
 
+const ENTITY_ID_BLOCKLIST: &[&str] = &[
+    "roku",
+    "android_tv",
+    "apple_tv",
+    "chromecast",
+    "fire_tv",
+    "nvidia_shield",
+    "bravia",
+    "denon",
+    "receiver",
+    "shield",
+    "harmony",
+    "remote_",
+];
+
+fn is_blocked_entity(entity_id: &str) -> bool {
+    let id = entity_id.to_ascii_lowercase();
+    ENTITY_ID_BLOCKLIST.iter().any(|needle| id.contains(needle))
+}
+
 fn entity_relates_to_thermostat(entity_id: &str, stem: &str, thermostat_name: &str) -> bool {
+    if is_blocked_entity(entity_id) {
+        return false;
+    }
     let id = entity_id.to_ascii_lowercase();
     let stem = stem.to_ascii_lowercase();
     if id.contains(&stem) {
-        return true;
+        return is_climate_sensor_entity(entity_id);
     }
     let name_slug = slugify(thermostat_name);
-    !name_slug.is_empty() && id.contains(&name_slug)
+    !name_slug.is_empty() && id.contains(&name_slug) && is_climate_sensor_entity(entity_id)
+}
+
+fn is_climate_sensor_entity(entity_id: &str) -> bool {
+    let id = entity_id.to_ascii_lowercase();
+    id.contains("temperature")
+        || id.contains("humidity")
+        || id.contains("occupancy")
+        || id.contains("motion")
+        || id.contains("presence")
+        || id.ends_with("_contact")
 }
 
 fn sensor_from_state(state: &HaState) -> Option<RemoteSensor> {
@@ -182,7 +232,7 @@ fn sensor_from_state(state: &HaState) -> Option<RemoteSensor> {
                         value: humidity_percent(h).to_string(),
                     });
                 }
-            } else if (state.entity_id.contains("occupancy") || state.state == "on" || state.state == "off")
+            } else if state.entity_id.contains("occupancy")
                 && domain(state) == Some("binary_sensor")
             {
                 capabilities.push(SensorCapability {
@@ -536,7 +586,7 @@ fn slugify(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::homeassistant::client::HaState;
+    use crate::homeassistant::client::{DeviceGraph, HaState};
 
     fn state(entity_id: &str, state: &str, attributes: Value) -> HaState {
         HaState {
@@ -606,7 +656,7 @@ mod tests {
             ),
         ];
 
-        let thermostats = translate_states(&states, &[], &[]);
+        let thermostats = translate_states(&states, &[], &[], &DeviceGraph::default());
         assert_eq!(thermostats.len(), 1);
         let t = &thermostats[0];
         assert_eq!(t.identifier, "climate.living_room");
@@ -642,7 +692,7 @@ mod tests {
             state("climate.one", "off", serde_json::json!({"current_temperature": 70.0})),
             state("climate.two", "off", serde_json::json!({"current_temperature": 71.0})),
         ];
-        let thermostats = translate_states(&states, &["climate.two".into()], &[]);
+        let thermostats = translate_states(&states, &["climate.two".into()], &[], &DeviceGraph::default());
         assert_eq!(thermostats.len(), 1);
         assert_eq!(thermostats[0].identifier, "climate.two");
     }
@@ -661,8 +711,111 @@ mod tests {
                 "temperature_unit": "°F"
             }),
         )];
-        let t = translate_states(&states, &[], &[]).pop().expect("thermostat");
+        let t = translate_states(&states, &[], &[], &DeviceGraph::default()).pop().expect("thermostat");
         assert_eq!(t.settings.hvac_mode, HvacMode::Cool);
         assert_eq!(t.equipment_running, vec!["compCool1"]);
+    }
+
+    fn device_graph(entity_json: &str, device_json: &str) -> DeviceGraph {
+        DeviceGraph::parse(entity_json, device_json).expect("device graph")
+    }
+
+    #[test]
+    fn excludes_roku_sensors_even_when_stem_matches() {
+        let states = vec![
+            state(
+                "climate.living_room",
+                "heat",
+                serde_json::json!({
+                    "friendly_name": "Living Room",
+                    "current_temperature": 72.0,
+                    "temperature_unit": "°F"
+                }),
+            ),
+            state(
+                "sensor.living_room_bedroom_temperature",
+                "68.0",
+                serde_json::json!({
+                    "friendly_name": "Bedroom",
+                    "device_class": "temperature",
+                    "unit_of_measurement": "°F"
+                }),
+            ),
+            state(
+                "sensor.living_room_roku_active",
+                "on",
+                serde_json::json!({
+                    "friendly_name": "Living Room Roku",
+                    "device_class": "power"
+                }),
+            ),
+        ];
+
+        let t = translate_states(&states, &[], &[], &DeviceGraph::default())
+            .pop()
+            .expect("thermostat");
+        assert_eq!(t.sensors.len(), 1);
+        assert_eq!(t.sensors[0].name, "Bedroom");
+    }
+
+    #[test]
+    fn includes_homekit_remote_sensors_via_device_graph() {
+        let states = vec![
+            state(
+                "climate.living_room",
+                "heat",
+                serde_json::json!({
+                    "friendly_name": "Living Room",
+                    "current_temperature": 72.0,
+                    "temperature_unit": "°F"
+                }),
+            ),
+            state(
+                "sensor.bedroom_temperature",
+                "68.0",
+                serde_json::json!({
+                    "friendly_name": "Bedroom",
+                    "device_class": "temperature",
+                    "unit_of_measurement": "°F"
+                }),
+            ),
+            state(
+                "binary_sensor.bedroom_occupancy",
+                "on",
+                serde_json::json!({
+                    "friendly_name": "Bedroom Occupancy",
+                    "device_class": "occupancy"
+                }),
+            ),
+            state(
+                "sensor.living_room_roku_active",
+                "on",
+                serde_json::json!({
+                    "friendly_name": "Living Room Roku",
+                    "device_class": "power"
+                }),
+            ),
+        ];
+        let graph = device_graph(
+            r#"[
+              {"entity_id":"climate.living_room","device_id":"therm"},
+              {"entity_id":"sensor.bedroom_temperature","device_id":"remote1"},
+              {"entity_id":"binary_sensor.bedroom_occupancy","device_id":"remote1"},
+              {"entity_id":"sensor.living_room_roku_active","device_id":"roku1"}
+            ]"#,
+            r#"[
+              {"id":"therm","via_device_id":null},
+              {"id":"remote1","via_device_id":"therm"},
+              {"id":"roku1","via_device_id":null}
+            ]"#,
+        );
+
+        let t = translate_states(&states, &[], &[], &graph)
+            .pop()
+            .expect("thermostat");
+        assert_eq!(t.sensors.len(), 2);
+        let names: Vec<_> = t.sensors.iter().map(|s| s.name.as_str()).collect();
+        assert!(names.contains(&"Bedroom"));
+        assert!(names.contains(&"Bedroom Occupancy"));
     }
 }

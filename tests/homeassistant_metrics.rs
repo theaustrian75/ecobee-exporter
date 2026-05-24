@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use ecobee_exporter::{
     collector::Collector,
-    homeassistant::{client::HaState, translate::translate_states},
+    homeassistant::{client::{DeviceGraph, HaState}, translate::translate_states},
     metrics::Metrics,
     provider::{FakeProvider, ThermostatProvider},
 };
@@ -15,7 +15,7 @@ fn fixture_states() -> Vec<HaState> {
 
 #[test]
 fn fixture_translates_climate_and_related_entities() {
-    let thermostats = translate_states(&fixture_states(), &[], &[]);
+    let thermostats = translate_states(&fixture_states(), &[], &[], &DeviceGraph::default());
     assert_eq!(thermostats.len(), 1);
     let t = &thermostats[0];
     assert_eq!(t.identifier, "climate.living_room");
@@ -26,7 +26,7 @@ fn fixture_translates_climate_and_related_entities() {
 
 #[test]
 fn ha_snapshot_renders_core_metrics() {
-    let thermostats = translate_states(&fixture_states(), &[], &[]);
+    let thermostats = translate_states(&fixture_states(), &[], &[], &DeviceGraph::default());
     let metrics = Metrics::new().expect("registry");
     metrics.record_snapshot(&thermostats, 0.05);
     let rendered = metrics.render().expect("encode");
@@ -47,7 +47,7 @@ fn ha_snapshot_renders_core_metrics() {
 
 #[tokio::test]
 async fn ha_provider_round_trip_via_fake_snapshot() {
-    let thermostats = translate_states(&fixture_states(), &[], &[]);
+    let thermostats = translate_states(&fixture_states(), &[], &[], &DeviceGraph::default());
     let metrics = Arc::new(Metrics::new().expect("registry"));
     let provider: Arc<dyn ThermostatProvider> = Arc::new(FakeProvider::new(thermostats));
     let collector = Collector::new(

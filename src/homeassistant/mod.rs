@@ -11,7 +11,7 @@ use crate::{
     provider::{ProviderError, ThermostatProvider},
 };
 
-use client::HaClient;
+use client::{DeviceGraph, HaClient};
 
 /// Pulls thermostat snapshots from Home Assistant's `/api/states` endpoint.
 pub struct HomeAssistantProvider {
@@ -44,10 +44,21 @@ impl HomeAssistantProvider {
 impl ThermostatProvider for HomeAssistantProvider {
     async fn fetch(&self) -> Result<Vec<Thermostat>, ProviderError> {
         let states = self.client.fetch_states().await?;
+        let device_graph = match self.client.fetch_device_graph().await {
+            Ok(graph) => graph,
+            Err(err) => {
+                tracing::warn!(
+                    error = %err,
+                    "Home Assistant device graph unavailable; falling back to entity-id heuristics for sensor matching"
+                );
+                DeviceGraph::default()
+            }
+        };
         Ok(translate::translate_states(
             &states,
             &self.climate_entities,
             &self.weather_entities,
+            &device_graph,
         ))
     }
 }
