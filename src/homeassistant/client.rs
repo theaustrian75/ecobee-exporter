@@ -18,9 +18,9 @@ pub struct HaState {
 
 /// Maps HA entities to devices and parent/child device relationships.
 ///
-/// Built from the Template API (`device_id()`, `device_registry.devices`) so
-/// HomeKit ecobee room sensors (separate accessories linked via `via_device_id`)
-/// attach to the correct thermostat without substring false positives (Roku, etc.).
+/// Built from the Template API (`device_id()`, `device_attr()`) so HomeKit
+/// ecobee room sensors (separate accessories linked via `via_device_id`) attach
+/// to the correct thermostat without substring false positives (Roku, etc.).
 #[derive(Debug, Clone, Default)]
 pub struct DeviceGraph {
     entity_to_device: HashMap<String, String>,
@@ -41,6 +41,12 @@ struct DeviceRow {
     via_device_id: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct DeviceGraphPayload {
+    entities: Vec<EntityDeviceRow>,
+    devices: Vec<DeviceRow>,
+}
+
 impl DeviceGraph {
     pub fn parse(entity_rows_json: &str, device_rows_json: &str) -> Result<Self, ProviderError> {
         let entity_rows: Vec<EntityDeviceRow> =
@@ -52,6 +58,18 @@ impl DeviceGraph {
                 ProviderError::Upstream(format!("device graph device JSON: {e}"))
             })?;
 
+        Ok(Self::from_rows(entity_rows, device_rows))
+    }
+
+    pub fn parse_payload(json: &str) -> Result<Self, ProviderError> {
+        let payload: DeviceGraphPayload =
+            serde_json::from_str(json.trim()).map_err(|e| {
+                ProviderError::Upstream(format!("device graph JSON: {e}"))
+            })?;
+        Ok(Self::from_rows(payload.entities, payload.devices))
+    }
+
+    fn from_rows(entity_rows: Vec<EntityDeviceRow>, device_rows: Vec<DeviceRow>) -> Self {
         let entity_to_device = entity_rows
             .into_iter()
             .map(|row| (row.entity_id, row.device_id))
@@ -62,10 +80,10 @@ impl DeviceGraph {
             .filter_map(|row| row.via_device_id.map(|parent| (row.id, parent)))
             .collect();
 
-        Ok(Self {
+        Self {
             entity_to_device,
             via_device,
-        })
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -102,22 +120,21 @@ pub struct HaClient {
     base_url: String,
 }
 
-const ENTITY_DEVICE_TEMPLATE: &str = r"{% set ns = namespace(items=[]) -%}
+const DEVICE_GRAPH_TEMPLATE: &str = r"{%- set ents = namespace(items=[]) -%}
+{%- set devs = namespace(items=[], seen=[]) -%}
 {%- for s in states -%}
 {%- if s.entity_id.startswith('sensor.') or s.entity_id.startswith('binary_sensor.') or s.entity_id.startswith('climate.') -%}
 {%- set did = device_id(s.entity_id) -%}
 {%- if did -%}
-{%- set ns.items = ns.items + [{'entity_id': s.entity_id, 'device_id': did}] -%}
+{%- set ents.items = ents.items + [{'entity_id': s.entity_id, 'device_id': did}] -%}
+{%- if did not in devs.seen -%}
+{%- set devs.seen = devs.seen + [did] -%}
+{%- set devs.items = devs.items + [{'id': did, 'via_device_id': device_attr(did, 'via_device_id')}] -%}
+{%- endif -%}
 {%- endif -%}
 {%- endif -%}
 {%- endfor -%}
-{{ ns.items | tojson }}";
-
-const DEVICE_TREE_TEMPLATE: &str = r"{% set ns = namespace(items=[]) -%}
-{%- for d in device_registry.devices -%}
-{%- set ns.items = ns.items + [{'id': d.id, 'via_device_id': d.via_device_id}] -%}
-{%- endfor -%}
-{{ ns.items | tojson }}";
+{{ {'entities': ents.items, 'devices': devs.items} | tojson }}";
 
 impl HaClient {
     pub fn new(base_url: &str, token: &str) -> Result<Self, ProviderError> {
@@ -153,9 +170,8 @@ impl HaClient {
     }
 
     pub async fn fetch_device_graph(&self) -> Result<DeviceGraph, ProviderError> {
-        let entity_rows = self.render_template(ENTITY_DEVICE_TEMPLATE).await?;
-        let device_rows = self.render_template(DEVICE_TREE_TEMPLATE).await?;
-        DeviceGraph::parse(&entity_rows, &device_rows)
+        let payload = self.render_template(DEVICE_GRAPH_TEMPLATE).await?;
+        DeviceGraph::parse_payload(&payload)
     }
 
     async fn render_template(&self, template: &str) -> Result<String, ProviderError> {
@@ -166,10 +182,22 @@ impl HaClient {
             .json(&serde_json::json!({ "template": template }))
             .send()
             .await?;
+        if resp.status() == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(ProviderError::Auth(
+                "Home Assistant rejected the access token for /api/template (401); an admin token is required".into(),
+            ));
+        }
         if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            let detail = body.trim();
+            let detail = if detail.is_empty() {
+                String::new()
+            } else {
+                format!(": {detail}")
+            };
             return Err(ProviderError::Upstream(format!(
-                "POST /api/template returned HTTP {}",
-                resp.status()
+                "POST /api/template returned HTTP {status}{detail}"
             )));
         }
         Ok(resp.text().await?)
@@ -203,5 +231,22 @@ mod tests {
 
         assert!(graph.entity_on_devices("sensor.bedroom_temperature", &related));
         assert!(!graph.entity_on_devices("sensor.living_room_roku_active", &related));
+    }
+
+    #[test]
+    fn device_graph_parse_payload() {
+        let graph = DeviceGraph::parse_payload(
+            r#"{"entities":[
+              {"entity_id":"climate.living_room","device_id":"therm"},
+              {"entity_id":"sensor.bedroom_temperature","device_id":"remote1"}
+            ],"devices":[
+              {"id":"therm","via_device_id":null},
+              {"id":"remote1","via_device_id":"therm"}
+            ]}"#,
+        )
+        .expect("parse");
+
+        let related = graph.related_device_ids("climate.living_room");
+        assert!(related.contains("remote1"));
     }
 }
