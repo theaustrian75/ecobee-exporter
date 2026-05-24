@@ -18,7 +18,7 @@ struct Cli {
     alias: String,
 
     /// 8-digit HomeKit setup code from ecobee Settings → HomeKit.
-    #[arg(long, required_unless_present = "discover_only")]
+    #[arg(long)]
     code: Option<String>,
 
     /// Accessory id from `discover` (required unless --discover-only).
@@ -36,6 +36,10 @@ struct Cli {
     /// Scan the LAN for `_hap._tcp` accessories and exit.
     #[arg(long)]
     discover_only: bool,
+
+    /// Read paired accessories and print a summary (debug connectivity).
+    #[arg(long)]
+    read_test: bool,
 
     /// List every HomeKit accessory, not just ecobee thermostats.
     #[arg(long)]
@@ -69,6 +73,29 @@ async fn main() -> anyhow::Result<()> {
 
     let mut controller = Controller::new(cli.pairing_file.clone());
     controller.load().context("loading existing pairings")?;
+
+    if cli.read_test {
+        let aliases: Vec<_> = controller.paired_devices().map(|d| d.alias.clone()).collect();
+        if aliases.is_empty() {
+            anyhow::bail!("no pairings in {}", cli.pairing_file.display());
+        }
+        eprintln!("Testing {} pairing(s) via mDNS + pair-verify…", aliases.len());
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(120),
+            controller.read_all_accessories(),
+        )
+        .await
+        {
+            Ok(Ok(results)) => {
+                for (alias, accessories) in results {
+                    eprintln!("  {alias}: OK ({} accessory tree(s))", accessories.len());
+                }
+            }
+            Ok(Err(e)) => eprintln!("FAIL: {e}"),
+            Err(_) => eprintln!("FAIL: timed out after 120s"),
+        }
+        return Ok(());
+    }
 
     if cli.verbose {
         eprintln!(

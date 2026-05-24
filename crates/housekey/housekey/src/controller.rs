@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
@@ -237,12 +238,25 @@ impl Controller {
         let mut out = Vec::new();
         let mut store_dirty = false;
         for alias in self.paired.keys().cloned().collect::<Vec<_>>() {
-            match self.read_accessories_with_discovered(&alias, &discovered).await {
-                Ok((accessories, host_updated)) => {
+            let alias_for_log = alias.clone();
+            let read = self.read_accessories_with_discovered(&alias, &discovered);
+            match tokio::time::timeout(
+                Duration::from_secs(30),
+                read,
+            )
+            .await
+            {
+                Ok(Ok((accessories, host_updated))) => {
                     store_dirty |= host_updated;
                     out.push((alias, accessories));
                 }
-                Err(e) => tracing::warn!(alias = %alias, error = %e, "homekit read failed"),
+                Ok(Err(e)) => {
+                    tracing::warn!(alias = %alias_for_log, error = %e, "homekit read failed");
+                }
+                Err(_) => tracing::warn!(
+                    alias = %alias_for_log,
+                    "homekit read timed out after 30s"
+                ),
             }
         }
         if store_dirty {

@@ -53,7 +53,11 @@ impl Collector {
                 self.metrics.record_snapshot(&snapshot, elapsed);
             }
             Err(e) => {
-                tracing::error!(error = %e, "fetch failed");
+                tracing::error!(
+                    error = %e,
+                    "homekit fetch failed; if pair-verify times out, Home Assistant may still \
+                     be polling the same thermostats — try `ecobee-homekit-pair --read-test -v`"
+                );
                 self.metrics.record_fetch_failure();
             }
         }

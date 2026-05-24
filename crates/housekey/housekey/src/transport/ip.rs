@@ -14,6 +14,9 @@ use super::TransportError;
 /// Maximum time to wait for a TCP connection to an accessory.
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// Maximum time to wait for a complete HTTP response body.
+pub const READ_TIMEOUT: Duration = Duration::from_secs(15);
+
 pub struct IpConnection {
     stream: TcpStream,
     host: String,
@@ -56,15 +59,7 @@ impl IpConnection {
             self.host,
             body.len()
         );
-        self.stream
-            .write_all(request.as_bytes())
-            .await
-            .map_err(TransportError::Io)?;
-        self.stream
-            .write_all(body)
-            .await
-            .map_err(TransportError::Io)?;
-        self.read_body().await
+        self.write_request(&request, Some(body)).await
     }
 
     pub async fn get_json(&mut self, path: &str) -> Result<serde_json::Value, TransportError> {
@@ -75,13 +70,37 @@ impl IpConnection {
              \r\n",
             self.host
         );
-        self.stream
-            .write_all(request.as_bytes())
-            .await
-            .map_err(TransportError::Io)?;
-        let body = self.read_body().await?;
+        let body = self.write_request(&request, None).await?;
         let plaintext = self.decrypt_body(&body)?;
         serde_json::from_slice(&plaintext).map_err(|e| TransportError::InvalidResponse(e.to_string()))
+    }
+
+    async fn write_request(
+        &mut self,
+        request: &str,
+        body: Option<&[u8]>,
+    ) -> Result<Vec<u8>, TransportError> {
+        let write = async {
+            self.stream
+                .write_all(request.as_bytes())
+                .await
+                .map_err(TransportError::Io)?;
+            if let Some(body) = body {
+                self.stream
+                    .write_all(body)
+                    .await
+                    .map_err(TransportError::Io)?;
+            }
+            self.read_body().await
+        };
+        tokio::time::timeout(READ_TIMEOUT, write)
+            .await
+            .map_err(|_| {
+                TransportError::RequestFailed(format!(
+                    "request timed out after {}s",
+                    READ_TIMEOUT.as_secs()
+                ))
+            })?
     }
 
     async fn read_body(&mut self) -> Result<Vec<u8>, TransportError> {
