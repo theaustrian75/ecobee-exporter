@@ -14,9 +14,6 @@ ecobee-exporter.state.json
 # HomeKit bridge pairing data (see `ecobee-homekit-pair`).
 homekit-pairings.json
 
-# Copied Home Assistant storage (see `ecobee-homekit-import-ha`).
-ha-core.config_entries
-
 # Editor / IDE
 .idea/
 .vscode/

@@ -22,7 +22,7 @@ End-to-end functional for all three backends.
 - `--demo` mode that serves canned data without credentials.
 - **Beehive:** Auth0 + PKCE one-time login (`ecobee-login`), refresh-token rotation, mode-0600 state file, full metric coverage.
 - **Home Assistant:** long-lived access token, auto-discovers `climate.`* entities (or an explicit allow-list), maps climate + related sensor/weather entities into the same Prometheus schema.
-- **HomeKit (untested):** one-time LAN pairing (`ecobee-homekit-pair`), HA pairing import (`ecobee-homekit-import-ha`), persistent pairing keys, core thermostat + sensor metrics over HAP. Not yet validated against live ecobees in this repo.
+- **HomeKit (untested):** one-time LAN pairing (`ecobee-homekit-pair`), persistent pairing keys, core thermostat + sensor metrics over HAP. Not yet validated against live ecobees in this repo.
 
 ## Demo mode (no credentials)
 
@@ -228,27 +228,6 @@ cargo run --bin ecobee-homekit-pair -- \
 
 Writes pairing keys to `./homekit-pairings.json`. Override with `--pairing-file` or `ECOBEE_HOMEKIT_PAIRING_FILE`. Treat the file like a secret (`chmod 600`).
 
-**Alternative: import from Home Assistant**
-
-If the thermostat is already paired to Home Assistant's **HomeKit Device** integration (`homekit_controller`), you can copy HA's pairing keys instead of re-pairing:
-
-```sh
-# Copy core.config_entries off the HA host, e.g.:
-#   scp ha:/config/.storage/core.config_entries ./ha-core.config_entries
-
-cargo run --bin ecobee-homekit-import-ha -- \
-  --ha-config ./ha-core.config_entries \
-  --pairing-file ./homekit-pairings.json \
-  --entry-id a1b2c3d4e5f60718293a4b5c6d7e8f90 \
-  --alias ecobee
-```
-
-Use `--dry-run` to preview imports without writing. When HA titles do not contain `ecobee` (common for room names like "Main Floor"), add `--all` to import every HomeKit Controller IP pairing in the file. Use `--entry-id` when multiple thermostats are present.
-
-This reuses Home Assistant's HomeKit controller identity. Avoid polling the same thermostat from HA and this exporter at the same time — concurrent connections can conflict.
-
-Imported `AccessoryIP` values are often HA's internal Docker addresses (e.g. `172.30.x.x`) and are not reachable from the exporter. The exporter re-resolves each thermostat via mDNS on every poll and updates `homekit-pairings.json` when it finds a LAN address. Run the exporter on the same network as the ecobees (Docker: use `network_mode: host` in the HomeKit compose profile).
-
 **Troubleshooting empty `/metrics`**
 
 If you only see `ecobee_fetch_time` and `ecobee_fetch_failures_total`, HomeKit reads are not completing. Test connectivity:
@@ -259,7 +238,7 @@ cargo run --bin ecobee-homekit-pair -- --verify -v
 
 `-v` / `--verbose` enables info-level handshake progress; add `-d` / `--debug` for HTTP wire details.
 
-- `**request timed out after 15s**` on every thermostat — the ecobee is not finishing `/pair-verify`. This usually means Home Assistant's **HomeKit Device** integration still holds an active session on the same thermostats. Remove the ecobee from HA's HomeKit integration (or disable that config entry), wait a minute, and retry `--verify`. HA-imported keys plus concurrent HA polling rarely works.
+- `**request timed out after 15s**` on every thermostat — the ecobee is not finishing `/pair-verify`. If Home Assistant's **HomeKit Device** integration still holds an active session on the same thermostats, remove the ecobee from HA (or disable that config entry), wait a minute, and retry `--verify`.
 - `**no pairings in …`** — mount or point `homekit.pairing_file` at your `homekit-pairings.json`.
 - **Prefer not to unpick HA?** Use `provider = "beehive"` for the exporter instead.
 
