@@ -9,8 +9,7 @@ A Prometheus exporter for ecobee thermostats, written in Rust. Two backends shar
 | **HomeKit** | `homekit`           | Local HAP over LAN (`[housekey](crates/housekey/housekey)`) | No cloud login, data stays on LAN   |
 
 
-Pick one backend per exporter instance. See [Beehive backend](#beehive-backend-cloud-api)
-or [HomeKit backend](#homekit-backend-local-lan) below for setup.
+Pick one backend per exporter instance. See [Beehive backend](#beehive-backend-cloud-api) or [HomeKit backend](#homekit-backend-local-lan) below for setup.
 
 ## Current status
 
@@ -49,7 +48,7 @@ Using the Beehive API to back a long-running exporter is almost certainly a viol
 
 - Ecobee can revoke your account or rotate mobile-app client credentials at any time, breaking this exporter without notice.
 - Keep scrape frequency reasonable. The default poll interval is three minutes, matching how often the thermostat reports new data.
-- Personal use against your own thermostats only. 
+- Personal use against your own thermostats only.
 
 If you have a pre-2024 developer key, prefer an official-API exporter ([billykwooten/ecobee-exporter](https://github.com/billykwooten/ecobee-exporter), [cfunkhouser/promobee](https://github.com/cfunkhouser/promobee), [mrala/ecobee_prometheus_exporter](https://github.com/mrala/ecobee_prometheus_exporter)).
 
@@ -189,11 +188,13 @@ Imported `AccessoryIP` values are often HA's internal Docker addresses (e.g. `17
 If you only see `ecobee_fetch_time` and `ecobee_fetch_failures_total`, HomeKit reads are not completing. Test connectivity:
 
 ```sh
-cargo run --bin ecobee-homekit-pair -- --pair-verify -v
+cargo run --bin ecobee-homekit-pair -- --verify -v
 ```
 
-- **`request timed out after 15s`** on every thermostat — the ecobee is not finishing `/pair-verify`. This usually means Home Assistant's **HomeKit Device** integration still holds an active session on the same thermostats. Remove the ecobee from HA's HomeKit integration (or disable that config entry), wait a minute, and retry `--pair-verify`. HA-imported keys plus concurrent HA polling rarely works.
-- **`no pairings in …`** — mount or point `homekit.pairing_file` at your `homekit-pairings.json`.
+`-v` / `--verbose` enables info-level handshake progress; add `-d` / `--debug` for HTTP wire details.
+
+- `**request timed out after 15s**` on every thermostat — the ecobee is not finishing `/pair-verify`. This usually means Home Assistant's **HomeKit Device** integration still holds an active session on the same thermostats. Remove the ecobee from HA's HomeKit integration (or disable that config entry), wait a minute, and retry `--verify`. HA-imported keys plus concurrent HA polling rarely works.
+- `**no pairings in …`** — mount or point `homekit.pairing_file` at your `homekit-pairings.json`.
 - **Prefer not to unpick HA?** Use `provider = "beehive"` for the exporter instead.
 
 **3. Configure**
@@ -241,18 +242,18 @@ Layered, lowest-to-highest precedence:
   e.g. `ECOBEE_BEEHIVE__ENDPOINT=https://…`.
 
 
-| Key                     | Default                        | Notes                                                             |
-| ----------------------- | ------------------------------ | ----------------------------------------------------------------- |
-| `listen_addr`           | `0.0.0.0:9098`                 | Where `/metrics` is served.                                       |
-| `poll_interval`         | `3m`                           | Floored to 60s.                                                   |
-| `state_file`            | `./ecobee-exporter.state.json` | Beehive refresh tokens (`ecobee-login`).                          |
-| `demo`                  | `false`                        | Serve canned data; no upstream calls.                             |
-| `provider`              | `beehive`                      | `beehive` (cloud) or `homekit` (local LAN). Also `--provider` or `ECOBEE_PROVIDER`. |
+| Key                     | Default                        | Notes                                                                                           |
+| ----------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------- |
+| `listen_addr`           | `0.0.0.0:9098`                 | Where `/metrics` is served.                                                                     |
+| `poll_interval`         | `3m`                           | Floored to 60s.                                                                                 |
+| `state_file`            | `./ecobee-exporter.state.json` | Beehive refresh tokens (`ecobee-login`).                                                        |
+| `demo`                  | `false`                        | Serve canned data; no upstream calls.                                                           |
+| `provider`              | `beehive`                      | `beehive` (cloud) or `homekit` (local LAN). Also `--provider` or `ECOBEE_PROVIDER`.             |
 | `homekit.pairing_file`  | `./homekit-pairings.json`      | HomeKit keys from `ecobee-homekit-pair` or `ecobee-homekit-import-ha`. `chmod 600` recommended. |
-| `beehive.endpoint`      | `https://api.ecobee.com/1`     | Data API base URL.                                                |
-| `beehive.user_agent`    | `ecobee-exporter/0.1.0`        | Override to mimic the mobile app if needed.                       |
-| `beehive.extra_headers` | `[]`                           | `[key, value]` pairs added to every request.                      |
-| `beehive.refresh_token` | `null`                         | Normally in `state_file` after `ecobee-login`.                    |
+| `beehive.endpoint`      | `https://api.ecobee.com/1`     | Data API base URL.                                                                              |
+| `beehive.user_agent`    | `ecobee-exporter/0.1.0`        | Override to mimic the mobile app if needed.                                                     |
+| `beehive.extra_headers` | `[]`                           | `[key, value]` pairs added to every request.                                                    |
+| `beehive.refresh_token` | `null`                         | Normally in `state_file` after `ecobee-login`.                                                  |
 
 
 Put secrets in the config file with `chmod 600`, not env vars — env vars leak into systemd journals and `ps`.

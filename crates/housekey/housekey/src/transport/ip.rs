@@ -28,6 +28,7 @@ impl IpConnection {
         let addr: SocketAddr = format!("{host}:{port}").parse().map_err(
             |e: std::net::AddrParseError| TransportError::ConnectionFailed(e.to_string()),
         )?;
+        tracing::debug!(%addr, "TCP connect");
         let stream = tokio::time::timeout(CONNECT_TIMEOUT, TcpStream::connect(addr))
             .await
             .map_err(|_| {
@@ -37,6 +38,7 @@ impl IpConnection {
                 ))
             })?
             .map_err(|e| TransportError::ConnectionFailed(e.to_string()))?;
+        tracing::debug!(%addr, "TCP connected");
         Ok(Self {
             stream,
             host: host.to_string(),
@@ -59,7 +61,10 @@ impl IpConnection {
             self.host,
             body.len()
         );
-        self.write_request(&request, Some(body)).await
+        tracing::debug!(path, body_bytes = body.len(), "POST tlv8");
+        let resp = self.write_request(&request, Some(body)).await?;
+        tracing::debug!(path, response_bytes = resp.len(), "POST tlv8 response");
+        Ok(resp)
     }
 
     pub async fn get_json(&mut self, path: &str) -> Result<serde_json::Value, TransportError> {
@@ -70,8 +75,15 @@ impl IpConnection {
              \r\n",
             self.host
         );
+        tracing::debug!(path, encrypted = self.session.is_some(), "GET");
         let body = self.write_request(&request, None).await?;
+        tracing::debug!(
+            path,
+            response_bytes = body.len(),
+            "GET response (pre-decrypt)"
+        );
         let plaintext = self.decrypt_body(&body)?;
+        tracing::debug!(path, plaintext_bytes = plaintext.len(), "GET response decrypted");
         serde_json::from_slice(&plaintext).map_err(|e| TransportError::InvalidResponse(e.to_string()))
     }
 

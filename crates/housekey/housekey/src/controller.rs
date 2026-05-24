@@ -169,11 +169,19 @@ impl Controller {
             .ok_or_else(|| ControllerError::NotPaired(alias.to_string()))?
             .clone();
 
-        let (host, port) = resolve_endpoint(&device, discovered).ok_or_else(|| {
+        tracing::info!(
+            alias,
+            accessory_id = %device.accessory_id,
+            controller_id = %device.controller_pairing_id,
+            "verifying pairing"
+        );
+
+        let (host, port, source) = resolve_endpoint(&device, discovered).ok_or_else(|| {
             ControllerError::NotPaired(format!(
                 "{alias}: accessory not found via mDNS and no stored host"
             ))
         })?;
+        tracing::info!(alias, %host, port, %source, "resolved accessory endpoint");
         let mut host_updated = false;
         if Some(host.as_str()) != device.host.as_deref() || device.port != Some(port) {
             tracing::info!(
@@ -181,7 +189,7 @@ impl Controller {
                 old_host = ?device.host,
                 new_host = %host,
                 port,
-                "resolved HomeKit accessory address"
+                "updating stored HomeKit accessory address"
             );
             if let Some(entry) = self.paired.get_mut(alias) {
                 entry.host = Some(host.clone());
@@ -193,7 +201,13 @@ impl Controller {
         let accessory_ltpk = parse_hex32(&device.accessory_ltpk)?;
         let controller_ltsk = parse_hex32(&device.controller_ltsk)?;
 
+        let connect_started = std::time::Instant::now();
         let mut conn = IpConnection::connect(&host, port).await?;
+        tracing::info!(
+            alias,
+            elapsed_ms = connect_started.elapsed().as_millis() as u64,
+            "TCP connect ok"
+        );
 
         let verify = PairVerify::new(
             &device.accessory_id,
@@ -203,13 +217,44 @@ impl Controller {
         );
         let (m1, secret) = verify.build_m1();
         let our_public = x25519_dalek::PublicKey::from(&secret).to_bytes();
+        tracing::info!(
+            alias,
+            m1_bytes = m1.len(),
+            our_pubkey = %fingerprint(&our_public),
+            "pair-verify M1 prepared"
+        );
+        let pv_started = std::time::Instant::now();
         let m2 = conn.post_tlv("/pair-verify", &m1).await?;
+        tracing::info!(
+            alias,
+            m2_bytes = m2.len(),
+            elapsed_ms = pv_started.elapsed().as_millis() as u64,
+            "pair-verify M2 received"
+        );
         let (m3, keys) = verify.process_m2(&m2, secret, &our_public)?;
+        tracing::info!(
+            alias,
+            m3_bytes = m3.len(),
+            "pair-verify M2 verified; M3 prepared (accessory signature ok, session keys derived)"
+        );
+        let m3_started = std::time::Instant::now();
         let m4 = conn.post_tlv("/pair-verify", &m3).await?;
         PairVerify::verify_m4(&m4)?;
+        tracing::info!(
+            alias,
+            m4_bytes = m4.len(),
+            elapsed_ms = m3_started.elapsed().as_millis() as u64,
+            "pair-verify M4 received; secure session established"
+        );
         conn.set_session(keys.write_key, keys.read_key);
 
+        let get_started = std::time::Instant::now();
         let json = conn.get_json("/accessories").await?;
+        tracing::info!(
+            alias,
+            elapsed_ms = get_started.elapsed().as_millis() as u64,
+            "GET /accessories ok"
+        );
         let accessories: Vec<Accessory> = serde_json::from_value(
             json.get("accessories")
                 .cloned()
@@ -218,6 +263,7 @@ impl Controller {
                 })?,
         )
         .map_err(|e| crate::transport::TransportError::InvalidResponse(e.to_string()))?;
+        tracing::info!(alias, accessory_count = accessories.len(), "verify complete");
 
         Ok((accessories, host_updated))
     }
@@ -229,8 +275,15 @@ impl Controller {
             return Err(ControllerError::NoPairings);
         }
 
+        let mdns_started = std::time::Instant::now();
         let discovered = match discovery::discover(discovery::DISCOVER_TIMEOUT_SECS).await {
-            Ok(found) => found,
+            Ok(found) => {
+                tracing::debug!(
+                    elapsed_ms = mdns_started.elapsed().as_millis() as u64,
+                    "mDNS browse elapsed",
+                );
+                found
+            }
             Err(e) => {
                 tracing::warn!(error = %e, "mDNS browse failed; using stored accessory addresses");
                 Vec::new()
@@ -289,12 +342,26 @@ impl Controller {
 fn resolve_endpoint(
     device: &PairedDevice,
     discovered: &[DiscoveredAccessory],
-) -> Option<(String, u16)> {
+) -> Option<(String, u16, &'static str)> {
     if let Some(found) = discovery::find_by_accessory_id(discovered, &device.accessory_id) {
-        return Some((found.addr.to_string(), found.port));
+        return Some((found.addr.to_string(), found.port, "mdns"));
     }
     let host = device.host.clone()?;
-    Some((host, device.port.unwrap_or(51826)))
+    Some((host, device.port.unwrap_or(51826), "stored"))
+}
+
+fn fingerprint(bytes: &[u8; 32]) -> String {
+    let mut out = String::with_capacity(8 + 1 + 8);
+    for b in &bytes[..4] {
+        use std::fmt::Write as _;
+        let _ = write!(out, "{b:02x}");
+    }
+    out.push('…');
+    for b in &bytes[28..] {
+        use std::fmt::Write as _;
+        let _ = write!(out, "{b:02x}");
+    }
+    out
 }
 
 fn random_pairing_id() -> String {
