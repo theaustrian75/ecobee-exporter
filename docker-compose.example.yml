@@ -8,7 +8,7 @@
 # ---------------------------------------------------------------------------
 # One-time Auth0 login (interactive; writes refresh token into the volume):
 #   docker compose -f docker-compose.example.yml run --rm -it \
-#     --entrypoint ecobee-login ecobee-exporter
+#     --entrypoint /usr/local/bin/docker-entrypoint.sh ecobee-exporter ecobee-login
 #
 # Open the printed URL in a browser, complete MFA, copy the full callback URL
 # from the address bar, and paste it at the prompt. Then start the exporter:
@@ -40,6 +40,9 @@ services:
     environment:
       - ECOBEE_PROVIDER=beehive
       - ECOBEE_STATE_FILE=/var/lib/ecobee-exporter/state.json
+      # Match volume ownership on the host (PUID/PGID aliases also supported).
+      - UID=1000
+      - GID=1000
       # IANA timezone for container logs (tzdata is installed in the image).
       - TZ=America/New_York
       - ECOBEE_LISTEN_ADDR=0.0.0.0:9098
@@ -57,6 +60,8 @@ services:
     environment:
       - ECOBEE_PROVIDER=homekit
       - ECOBEE_HOMEKIT__PAIRING_FILE=/var/lib/ecobee-exporter/homekit-pairings.json
+      - UID=1000
+      - GID=1000
       - TZ=America/New_York
       - ECOBEE_LISTEN_ADDR=0.0.0.0:9098
       - ECOBEE_POLL_INTERVAL=3m

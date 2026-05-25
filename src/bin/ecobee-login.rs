@@ -43,16 +43,30 @@ struct Cli {
     open_browser: bool,
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn init_tracing() {
+    let timer = ecobee_exporter::tracing_init::local_timer()
+        .expect("local timezone unavailable; set TZ and install tzdata (see README)");
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
         )
         .with_target(false)
+        .with_timer(timer)
         .init();
+}
 
+fn main() -> anyhow::Result<()> {
+    init_tracing();
+
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .context("building tokio runtime")?
+        .block_on(run())
+}
+
+async fn run() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let pkce = PkcePair::generate().context("generating PKCE pair")?;
     let url = build_authorize_url(&pkce).context("building authorize URL")?;

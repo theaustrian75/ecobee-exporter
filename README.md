@@ -105,8 +105,9 @@ One-time interactive login (mount a volume for token persistence):
 ```sh
 docker run --rm -it \
   -v ecobee-exporter-data:/var/lib/ecobee-exporter \
-  --entrypoint ecobee-login \
-  ecobee-exporter:local
+  -e UID="$(id -u)" -e GID="$(id -g)" \
+  --entrypoint /usr/local/bin/docker-entrypoint.sh \
+  ecobee-exporter:local ecobee-login
 ```
 
 Run the exporter:
@@ -116,9 +117,12 @@ docker run -d --name ecobee-exporter --restart unless-stopped \
   -p 9098:9098 \
   -v ecobee-exporter-data:/var/lib/ecobee-exporter \
   -e ECOBEE_STATE_FILE=/var/lib/ecobee-exporter/state.json \
+  -e UID="$(id -u)" -e GID="$(id -g)" \
   -e TZ=America/New_York \
   ecobee-exporter:local
 ```
+
+Set `UID` / `GID` (or `PUID` / `PGID`) to the host user that owns mounted volumes. The entrypoint recreates the container's `ecobee` user with those ids before starting (default `1000`).
 
 See [Docker compose](#docker-compose) below for a compose-based workflow. `TZ` sets the container timezone for log timestamps (metrics are unitless gauges). Other `ECOBEE_*` variables follow the same prefix as bare-metal runs.
 
@@ -333,7 +337,7 @@ Copy `docker-compose.example.yml` and adjust the image tag if needed:
 ```sh
 # Beehive: one-time Auth0 bootstrap (interactive).
 docker compose -f docker-compose.example.yml run --rm -it \
-  --entrypoint ecobee-login ecobee-exporter
+  --entrypoint /usr/local/bin/docker-entrypoint.sh ecobee-exporter ecobee-login
 
 docker compose -f docker-compose.example.yml up -d
 curl http://localhost:9098/metrics

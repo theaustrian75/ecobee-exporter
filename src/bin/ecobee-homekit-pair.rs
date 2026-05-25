@@ -63,6 +63,8 @@ fn init_logging(verbose: bool, debug: bool) {
     } else {
         "warn"
     };
+    let timer = ecobee_exporter::tracing_init::local_timer()
+        .expect("local timezone unavailable; set TZ and install tzdata (see README)");
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -70,14 +72,22 @@ fn init_logging(verbose: bool, debug: bool) {
         )
         .with_target(false)
         .with_writer(std::io::stderr)
+        .with_timer(timer)
         .init();
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     init_logging(cli.verbose, cli.debug);
 
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .context("building tokio runtime")?
+        .block_on(run(cli))
+}
+
+async fn run(cli: Cli) -> anyhow::Result<()> {
     let mut controller = Controller::new(cli.pairing_file.clone());
     controller.load().context("loading existing pairings")?;
 

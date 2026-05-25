@@ -28,7 +28,8 @@ sha2 = "0.11.0"
 thiserror = "2.0.18"
 tokio = { version = "1.52.3", features = ["full"] }
 tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
+time = { version = "0.3", features = ["local-offset", "formatting"] }
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt", "local-time"] }
 url = "2.5.8"
 housekey = { path = "crates/housekey/housekey" }
 axum-server = { version = "0.8.0", features = ["tls-rustls"] }

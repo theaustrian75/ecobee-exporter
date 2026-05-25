@@ -18,3 +18,4 @@ pub mod model;
 pub mod provider;
 pub mod server;
 pub mod state;
+pub mod tracing_init;

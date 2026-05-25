@@ -146,10 +146,17 @@ impl Cli {
     }
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
     init_tracing();
 
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .context("building tokio runtime")?
+        .block_on(run())
+}
+
+async fn run() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let mut cfg = Config::load(cli.config.as_deref()).context("loading config")?;
     cfg.apply_cli_overrides(&cli.overrides()?);
@@ -230,8 +237,10 @@ async fn main() -> anyhow::Result<()> {
 fn init_tracing() {
     let filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("ecobee_exporter=info,info"));
+    let timer = ecobee_exporter::tracing_init::local_timer()
+        .expect("local timezone unavailable; set TZ and install tzdata (see README)");
     tracing_subscriber::registry()
         .with(filter)
-        .with(fmt::layer().with_target(true))
+        .with(fmt::layer().with_target(true).with_timer(timer))
         .init();
 }
