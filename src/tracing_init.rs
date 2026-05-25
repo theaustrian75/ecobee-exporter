@@ -9,9 +9,10 @@ pub fn refresh_tz_from_env() {
 }
 
 /// Cached local offset; call [`refresh_tz_from_env`] first on the main thread.
-pub fn local_timer(
-) -> Result<OffsetTime<time::format_description::well_known::Rfc3339>, time::error::IndeterminateOffset>
-{
+pub fn local_timer() -> Result<
+    OffsetTime<time::format_description::well_known::Rfc3339>,
+    time::error::IndeterminateOffset,
+> {
     refresh_tz_from_env();
     OffsetTime::local_rfc_3339()
 }
