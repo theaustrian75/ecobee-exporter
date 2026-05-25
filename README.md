@@ -343,6 +343,27 @@ docker compose -f docker-compose.example.yml up -d
 curl http://localhost:9098/metrics
 ```
 
+**TLS:** use the `tls` profile, mount PEM files, and override the image healthcheck (it probes plain HTTP by default):
+
+```sh
+mkdir -p certs
+# copy or symlink fullchain.pem and privkey.pem into ./certs/
+docker compose -f docker-compose.example.yml --profile tls up -d
+curl https://localhost:9098/metrics
+```
+
+Configure Prometheus with `scheme: https`. For self-signed certificates, add `--no-check-certificate` to the compose healthcheck `wget` command.
+
+**Home Assistant:** create a `.env` file with your long-lived token, then start the `homeassistant` profile:
+
+```sh
+echo 'ECOBEE_HOMEASSISTANT__TOKEN=your_long_lived_token' >> .env
+docker compose -f docker-compose.example.yml --profile homeassistant up -d
+curl http://localhost:9098/metrics
+```
+
+Point `ECOBEE_HOMEASSISTANT__URL` at wherever HA listens (default `http://host.docker.internal:8123` reaches the Docker host). See [Home Assistant backend](#home-assistant-backend) for entity filtering and weather linking.
+
 For HomeKit, pair on the host first and mount `homekit-pairings.json`, then set `ECOBEE_PROVIDER=homekit` in the compose environment.
 
 ---

@@ -1,7 +1,7 @@
 # Copy and adjust as needed.
 #
-# Backend: set ECOBEE_PROVIDER=beehive (default) or homekit.
-# CLI equivalent: cargo run -- --provider homekit
+# Backend: set ECOBEE_PROVIDER=beehive (default), homeassistant, or homekit.
+# CLI equivalent: cargo run -- --provider homeassistant
 #
 # ---------------------------------------------------------------------------
 # Beehive backend (cloud API — default)
@@ -26,7 +26,27 @@
 # Start the HomeKit exporter (uses host networking to reach the thermostat):
 #   docker compose -f docker-compose.example.yml --profile homekit up -d
 #
-# Metrics: http://localhost:9098/metrics
+# ---------------------------------------------------------------------------
+# Home Assistant backend (REST API)
+# ---------------------------------------------------------------------------
+# HA must be reachable from the container. Create a .env file next to this
+# compose file (gitignored) with your long-lived access token:
+#   ECOBEE_HOMEASSISTANT__TOKEN=your_long_lived_token
+#
+# Adjust ECOBEE_HOMEASSISTANT__URL if HA is not on the Docker host
+# (e.g. http://192.168.1.10:8123 or http://homeassistant:8123 on a shared network).
+#   docker compose -f docker-compose.example.yml --profile homeassistant up -d
+#
+# ---------------------------------------------------------------------------
+# TLS (HTTPS for /metrics and /healthz)
+# ---------------------------------------------------------------------------
+# Mount PEM files (e.g. Let's Encrypt fullchain.pem + privkey.pem), then:
+#   docker compose -f docker-compose.example.yml --profile tls up -d
+#
+# Metrics: https://localhost:9098/metrics
+# For self-signed certs, add --no-check-certificate to the healthcheck wget below.
+#
+# Metrics (plain HTTP): http://localhost:9098/metrics
 
 services:
   # Beehive (cloud). Started by default: `docker compose up -d`
@@ -65,6 +85,59 @@ services:
       - TZ=America/New_York
       - ECOBEE_LISTEN_ADDR=0.0.0.0:9098
       - ECOBEE_POLL_INTERVAL=3m
+
+  # Home Assistant REST API. Requires `--profile homeassistant` and a token in `.env`.
+  ecobee-exporter-homeassistant:
+    profiles: [homeassistant]
+    image: ghcr.io/theaustrian75/ecobee-exporter:latest
+    restart: unless-stopped
+    ports:
+      - "9098:9098"
+    extra_hosts:
+      # Reach Home Assistant on the Docker host (Linux). Omit if HA uses another hostname/IP.
+      - "host.docker.internal:host-gateway"
+    environment:
+      - ECOBEE_PROVIDER=homeassistant
+      - ECOBEE_HOMEASSISTANT__URL=http://host.docker.internal:8123
+      - ECOBEE_HOMEASSISTANT__TOKEN=${ECOBEE_HOMEASSISTANT__TOKEN:?set ECOBEE_HOMEASSISTANT__TOKEN in .env}
+      # Export every climate.* entity by default. To restrict thermostats, mount a
+      # config file: - ./ecobee-exporter.toml:/etc/ecobee-exporter/config.toml:ro
+      # and set ECOBEE_EXPORTER_CONFIG=/etc/ecobee-exporter/config.toml with
+      # [homeassistant] climate_entities = ["climate.living_room"] inside the file.
+      - UID=1000
+      - GID=1000
+      - TZ=America/New_York
+      - ECOBEE_LISTEN_ADDR=0.0.0.0:9098
+      - ECOBEE_POLL_INTERVAL=3m
+
+  # Beehive over HTTPS. Requires `--profile tls` and PEM files on the host.
+  ecobee-exporter-tls:
+    profiles: [tls]
+    image: ghcr.io/theaustrian75/ecobee-exporter:latest
+    restart: unless-stopped
+    ports:
+      - "9098:9098"
+    volumes:
+      - ecobee-exporter-data:/var/lib/ecobee-exporter
+      # Adjust paths to your certificate files (read-only).
+      - ./certs/fullchain.pem:/etc/ecobee-exporter/tls/fullchain.pem:ro
+      - ./certs/privkey.pem:/etc/ecobee-exporter/tls/privkey.pem:ro
+    environment:
+      - ECOBEE_PROVIDER=beehive
+      - ECOBEE_STATE_FILE=/var/lib/ecobee-exporter/state.json
+      - UID=1000
+      - GID=1000
+      - TZ=America/New_York
+      - ECOBEE_LISTEN_ADDR=0.0.0.0:9098
+      - ECOBEE_POLL_INTERVAL=3m
+      - ECOBEE_TLS__CERT_FILE=/etc/ecobee-exporter/tls/fullchain.pem
+      - ECOBEE_TLS__KEY_FILE=/etc/ecobee-exporter/tls/privkey.pem
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "https://127.0.0.1:9098/healthz"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
 
 volumes:
   ecobee-exporter-data:
