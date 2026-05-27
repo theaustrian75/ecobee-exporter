@@ -2,7 +2,7 @@
 //!
 //! These intentionally do *not* try to mirror Beehive's GraphQL response
 //! shapes 1:1 — they're a stable interface that the Beehive client (or any
-//! future provider, e.g. a HomeKit one) translates into. Keeping this layer
+//! future provider translates into. Keeping this layer
 //! small means we don't have to redesign metrics every time the upstream
 //! API changes.
 //!

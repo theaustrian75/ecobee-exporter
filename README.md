@@ -1,20 +1,19 @@
 # Prometheus ecobee-exporter
 
-A Prometheus exporter for ecobee thermostats, written in Rust. Three backends share the same `/metrics` endpoint and metric names:
+A Prometheus exporter for ecobee thermostats, written in Rust. Two backends share the same `/metrics` endpoint and metric names:
 
 
-| Backend            | Provider            | Data path                                                   | Metric coverage                                              |
-| ------------------ | ------------------- | ----------------------------------------------------------- | ------------------------------------------------------------ |
-| **Beehive**        | `beehive` (default) | ecobee cloud API via Auth0 JWT                              | Full — see [metrics](#metrics)                               |
-| **Home Assistant** | `homeassistant`     | HA REST API (`/api/states`)                                 | Core + sensors + weather — see [metrics](#metrics)           |
-| **HomeKit**        | `homekit`           | Local HAP over LAN (`[housekey](crates/housekey/housekey)`) | Core + sensors only (**untested**) — see [metrics](#metrics) |
+| Backend            | Provider            | Data path                      | Metric coverage                                    |
+| ------------------ | ------------------- | ------------------------------ | -------------------------------------------------- |
+| **Beehive**        | `beehive` (default) | ecobee cloud API via Auth0 JWT | Full — see [metrics](#metrics)                     |
+| **Home Assistant** | `homeassistant`     | HA REST API (`/api/states`)    | Core + sensors + weather — see [metrics](#metrics) |
 
 
-Pick one backend per exporter instance. See [Beehive backend](#beehive-backend-cloud-api), [Home Assistant backend](#home-assistant-backend), or [HomeKit backend](#homekit-backend-local-lan) below for setup.
+Pick one backend per exporter instance. See [Beehive backend](#beehive-backend-cloud-api) or [Home Assistant backend](#home-assistant-backend) below for setup.
 
 ## Current status
 
-End-to-end functional for all three backends.
+End-to-end functional for both backends.
 
 - HTTP(S) server on `/metrics` and `/healthz` (optional TLS via PEM certificate + key).
 - Polling loop with a configurable interval and a 60-second floor.
@@ -22,7 +21,6 @@ End-to-end functional for all three backends.
 - `--demo` mode that serves canned data without credentials.
 - **Beehive:** Auth0 + PKCE one-time login (`ecobee-login`), refresh-token rotation, mode-0600 state file, full metric coverage.
 - **Home Assistant:** long-lived access token, auto-discovers `climate.`* entities (or an explicit allow-list), maps climate + related sensor/weather entities into the same Prometheus schema.
-- **HomeKit (untested):** one-time LAN pairing (`ecobee-homekit-pair`), persistent pairing keys, core thermostat + sensor metrics over HAP. Not yet validated against live ecobees in this repo.
 
 ## Demo mode (no credentials)
 
@@ -130,7 +128,7 @@ See [Docker compose](#docker-compose) below for a compose-based workflow. `TZ` s
 
 ## Home Assistant backend
 
-Reads ecobee data that Home Assistant already exposes — from the **ecobee** cloud integration and/or **HomeKit Device** (`homekit_controller`) — via the [REST API](https://developers.home-assistant.io/docs/api/rest/). This is the recommended path when HA is already polling your thermostats and direct HomeKit pair-verify from this exporter is blocked.
+Reads ecobee data that Home Assistant already exposes — from the **ecobee** cloud integration and/or **HomeKit Device** (`homekit_controller`) — via the [REST API](https://developers.home-assistant.io/docs/api/rest/). This is the recommended path when HA is already polling your thermostats.
 
 ### Prerequisites
 
@@ -190,96 +188,6 @@ Extended runtime, alerts, hold/events, and demand-management offsets are **not**
 
 ---
 
-## HomeKit backend (local LAN) — **untested**
-
-> **Warning:** This backend has **not** been validated end-to-end against live ecobees in this project. Pair-verify frequently hangs when Home Assistant holds concurrent HomeKit sessions. Prefer `provider = "homeassistant"` until native HomeKit is confirmed working in your environment.
-
-Reads temperature, humidity, occupancy, HVAC mode, and coarse equipment state directly from the thermostat over Apple HomeKit (HAP). No Auth0 login, no cloud API, and no Beehive ToS concerns — traffic stays on your LAN.
-
-Pairing is a one-time bootstrap; the exporter reuses stored keys on every poll.
-
-### Prerequisites
-
-- Ecobee thermostat with HomeKit enabled (**Settings → HomeKit**).
-- 8-digit HomeKit setup code from that screen.
-- Exporter host on the **same LAN** as the thermostat (mDNS + TCP to port 51826).
-- For Docker: run pairing on the host (or use `network_mode: host`) so mDNS discovery works; the running exporter must reach the thermostat IP.
-
-### Setup
-
-**1. Discover the thermostat**
-
-```sh
-cargo run --bin ecobee-homekit-pair -- --discover-only
-```
-
-Example output:
-
-```
-Main Floor  id=AA:BB:CC:DD:EE:FF  192.168.1.42:51826  category=Thermostat  model=ecobee3 lite
-```
-
-Copy the `id=` value.
-
-**2. Pair and save keys**
-
-```sh
-cargo run --bin ecobee-homekit-pair -- \
-  --device-id AA:BB:CC:DD:EE:FF \
-  --code 12345678 \
-  --alias ecobee
-```
-
-Writes pairing keys to `./homekit-pairings.json`. Override with `--pairing-file` or `ECOBEE_HOMEKIT_PAIRING_FILE`. Treat the file like a secret (`chmod 600`).
-
-**Troubleshooting empty `/metrics`**
-
-If you only see `ecobee_fetch_time` and `ecobee_fetch_failures_total`, HomeKit reads are not completing. Test connectivity:
-
-```sh
-cargo run --bin ecobee-homekit-pair -- --verify -v
-```
-
-`-v` / `--verbose` enables info-level handshake progress; add `-d` / `--debug` for HTTP wire details.
-
-- `**request timed out after 15s**` on every thermostat — the ecobee is not finishing `/pair-verify`. If Home Assistant's **HomeKit Device** integration still holds an active session on the same thermostats, remove the ecobee from HA (or disable that config entry), wait a minute, and retry `--verify`.
-- `**no pairings in …`** — mount or point `homekit.pairing_file` at your `homekit-pairings.json`.
-- **Prefer not to unpick HA?** Use `provider = "beehive"` for the exporter instead.
-
-**3. Configure**
-
-```toml
-provider = "homekit"
-
-[homekit]
-pairing_file = "./homekit-pairings.json"
-```
-
-Or via environment or CLI flag:
-
-```sh
-export ECOBEE_PROVIDER=homekit
-export ECOBEE_HOMEKIT__PAIRING_FILE=./homekit-pairings.json
-# or: cargo run --release -- --provider homekit
-```
-
-**4. Run the exporter**
-
-```sh
-cargo run --release
-curl http://localhost:9098/metrics
-```
-
-Re-pairing is only needed if you reset HomeKit on the thermostat or delete the pairing file. Outdoor weather, extended runtime, alerts, and other Beehive-only fields are not available over HomeKit — see the [metrics tables](#metrics).
-
-### HomeKit Docker notes
-
-- Run `ecobee-homekit-pair` on the host (recommended) or in a container with `network_mode: host` so `_hap._tcp` mDNS discovery works.
-- Mount `homekit-pairings.json` into the exporter container at the path configured in `homekit.pairing_file`.
-- Set `ECOBEE_PROVIDER=homekit` and `ECOBEE_HOMEKIT__PAIRING_FILE=…`.
-
----
-
 ## Configuration reference
 
 Layered, lowest-to-highest precedence:
@@ -300,8 +208,7 @@ Layered, lowest-to-highest precedence:
 | `poll_interval`                  | `3m`                           | `--poll-interval` / `ECOBEE_POLL_INTERVAL` (floored to 60s)                      |
 | `state_file`                     | `./ecobee-exporter.state.json` | `--state-file` / `ECOBEE_STATE_FILE`                                             |
 | `demo`                           | `false`                        | `--demo` / `ECOBEE_DEMO`                                                         |
-| `provider`                       | `beehive`                      | `--provider` / `ECOBEE_PROVIDER` (`beehive`, `homeassistant`, `homekit`)         |
-| `homekit.pairing_file`           | `./homekit-pairings.json`      | `--homekit-pairing-file` / `ECOBEE_HOMEKIT__PAIRING_FILE` (untested backend)     |
+| `provider`                       | `beehive`                      | `--provider` / `ECOBEE_PROVIDER` (`beehive`, `homeassistant`)                    |
 | `homeassistant.url`              | *(required)*                   | `--homeassistant-url` / `ECOBEE_HOMEASSISTANT__URL`                              |
 | `homeassistant.token`            | *(required)*                   | `--homeassistant-token` / `ECOBEE_HOMEASSISTANT__TOKEN`                          |
 | `homeassistant.climate_entities` | `[]` (all climates)            | `--homeassistant-climate-entity` (repeat) / TOML array                           |
@@ -364,8 +271,6 @@ curl http://localhost:9098/metrics
 
 Point `ECOBEE_HOMEASSISTANT__URL` at wherever HA listens (default `http://host.docker.internal:8123` reaches the Docker host). See [Home Assistant backend](#home-assistant-backend) for entity filtering and weather linking.
 
-For HomeKit, pair on the host first and mount `homekit-pairings.json`, then set `ECOBEE_PROVIDER=homekit` in the compose environment.
-
 ---
 
 ## Metrics
@@ -385,45 +290,45 @@ Every metric row lists availability for each backend:
 ### Availability summary
 
 
-| Category                                   | Beehive         | Home Assistant                                    | HomeKit                  |
-| ------------------------------------------ | --------------- | ------------------------------------------------- | ------------------------ |
-| Core thermostat temps / HVAC               | Yes             | Yes                                               | Yes                      |
-| Remote sensor temps / humidity / occupancy | Yes             | Yes (matched `sensor.`* / `binary_sensor.`*)      | Yes (HAP services)       |
-| Outdoor / forecast weather                 | Yes             | Yes (linked `weather.*`)                          | No                       |
-| Equipment running                          | Yes (full list) | Partial (ecobee cloud attrs or `hvac_action` map) | Partial (heat/cool only) |
-| Schedule / comfort settings                | Yes             | Partial                                           | No                       |
-| Hold / events                              | Yes             | No                                                | No                       |
-| Extended runtime / utility bills           | Yes             | No                                                | No                       |
-| Alerts                                     | Yes             | No                                                | No                       |
+| Category                                   | Beehive         | Home Assistant                               |
+| ------------------------------------------ | --------------- | -------------------------------------------- |
+| Core thermostat temps / HVAC               | Yes             | Yes                                          |
+| Remote sensor temps / humidity / occupancy | Yes             | Yes (matched `sensor.`* / `binary_sensor.`*) |
+| Outdoor / forecast weather                 | Yes             | Yes (linked `weather.*`)                     |
+| Equipment running                          | Yes (full list) | Partial (ecobee cloud attrs or `hvac_action` map) |
+| Schedule / comfort settings                | Yes             | Partial                                      |
+| Hold / events                              | Yes             | No                                           |
+| Extended runtime / utility bills           | Yes             | No                                           |
+| Alerts                                     | Yes             | No                                           |
 
 
 ### Thermostat + sensor
 
 
-| Metric                          | Labels                                                                        | Beehive | Home Assistant | HomeKit | Description                                                                                                                                         |
-| ------------------------------- | ----------------------------------------------------------------------------- | ------- | -------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ecobee_fetch_time`             | —                                                                             | Yes     | Yes            | Yes     | Seconds the last upstream fetch took.                                                                                                               |
-| `ecobee_fetch_failures_total`   | —                                                                             | Yes     | Yes            | Yes     | Counter of failed fetches since start. *(extension)*                                                                                                |
-| `ecobee_actual_temperature`     | `thermostat_id`, `thermostat_name`                                            | Yes     | Yes            | Yes     | Current temperature, degrees.                                                                                                                       |
-| `ecobee_target_temperature_min` | `thermostat_id`, `thermostat_name`                                            | Yes     | Yes            | Yes     | Heating setpoint, degrees.                                                                                                                          |
-| `ecobee_target_temperature_max` | `thermostat_id`, `thermostat_name`                                            | Yes     | Yes            | Yes     | Cooling setpoint, degrees.                                                                                                                          |
-| `ecobee_currenthvacmode`        | `thermostat_id`, `thermostat_name`, `current_hvac_mode`                       | Yes     | Yes            | Yes     | Always `0`; mode encoded as a label (billykwooten convention).                                                                                      |
-| `ecobee_connected`              | `thermostat_id`, `thermostat_name`                                            | Yes     | Partial        | Partial | Beehive: cloud reachability. Home Assistant: `1` when climate entity is not `unavailable`. HomeKit: `1` when paired (LAN, not cloud). *(extension)* |
-| `ecobee_temperature`            | `thermostat_id`, `thermostat_name`, `sensor_id`, `sensor_name`, `sensor_type` | Yes     | Yes            | Yes     | Per-sensor temperature, degrees. Home Assistant: related entities matched by climate stem.                                                          |
-| `ecobee_humidity`               | `thermostat_id`, `thermostat_name`, `sensor_id`, `sensor_name`, `sensor_type` | Yes     | Yes            | Yes     | Per-sensor humidity, percent.                                                                                                                       |
-| `ecobee_occupancy`              | `thermostat_id`, `thermostat_name`, `sensor_id`, `sensor_name`, `sensor_type` | Yes     | Yes            | Yes     | Per-sensor occupancy (0 or 1). Home Assistant: when matching `binary_sensor.`* exists.                                                              |
-| `ecobee_in_use`                 | `thermostat_id`, `thermostat_name`, `sensor_id`, `sensor_name`, `sensor_type` | Yes     | Partial        | Partial | Beehive: included in thermostat average. Home Assistant / HomeKit: always `0`.                                                                      |
-| `ecobee_actual_humidity`        | `thermostat_id`, `thermostat_name`                                            | Yes     | Yes            | Yes     | Thermostat humidity, percent. *(extension)*                                                                                                         |
-| `ecobee_desired_humidity`       | `thermostat_id`, `thermostat_name`                                            | Yes     | No             | No      | Humidifier setpoint, percent. *(extension)*                                                                                                         |
-| `ecobee_desired_dehumidity`     | `thermostat_id`, `thermostat_name`                                            | Yes     | No             | No      | Dehumidifier setpoint, percent. *(extension)*                                                                                                       |
-| `ecobee_raw_temperature`        | `thermostat_id`, `thermostat_name`                                            | Yes     | No             | No      | Dry-bulb temperature at the thermostat. *(extension)*                                                                                               |
-| `ecobee_desired_fan_mode`       | `thermostat_id`, `thermostat_name`, `desired_fan_mode`                        | Yes     | Partial        | No      | Fan mode as label (`auto`, `on`). Home Assistant: when `fan_mode` attribute is present. *(extension)*                                               |
-| `ecobee_current_climate`        | `thermostat_id`, `thermostat_name`, `current_climate`                         | Yes     | Partial        | No      | Active schedule climate as label. Home Assistant: from `preset_mode` / `climate_mode`. *(extension)*                                                |
-| `ecobee_hold_active`            | `thermostat_id`, `thermostat_name`                                            | Yes     | Partial        | Partial | Beehive: real hold/DR state. Home Assistant / HomeKit: always `0`. *(extension)*                                                                    |
-| `ecobee_follow_me_comfort`      | `thermostat_id`, `thermostat_name`                                            | Yes     | Partial        | Partial | Beehive: real setting. Home Assistant / HomeKit: always `0`. *(extension)*                                                                          |
-| `ecobee_smart_circulation`      | `thermostat_id`, `thermostat_name`                                            | Yes     | Partial        | Partial | Beehive: real setting. Home Assistant / HomeKit: always `0`. *(extension)*                                                                          |
-| `ecobee_heat_stages`            | `thermostat_id`, `thermostat_name`                                            | Yes     | No             | No      | Configured heating stages. *(extension)*                                                                                                            |
-| `ecobee_cool_stages`            | `thermostat_id`, `thermostat_name`                                            | Yes     | No             | No      | Configured cooling stages. *(extension)*                                                                                                            |
+| Metric                          | Labels                                                                        | Beehive | Home Assistant | Description                                                                                                                                  |
+| ------------------------------- | ----------------------------------------------------------------------------- | ------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ecobee_fetch_time`             | —                                                                             | Yes     | Yes            | Seconds the last upstream fetch took.                                                                                                        |
+| `ecobee_fetch_failures_total`   | —                                                                             | Yes     | Yes            | Counter of failed fetches since start. *(extension)*                                                                                         |
+| `ecobee_actual_temperature`     | `thermostat_id`, `thermostat_name`                                            | Yes     | Yes            | Current temperature, degrees.                                                                                                                |
+| `ecobee_target_temperature_min` | `thermostat_id`, `thermostat_name`                                            | Yes     | Yes            | Heating setpoint, degrees.                                                                                                                   |
+| `ecobee_target_temperature_max` | `thermostat_id`, `thermostat_name`                                            | Yes     | Yes            | Cooling setpoint, degrees.                                                                                                                   |
+| `ecobee_currenthvacmode`        | `thermostat_id`, `thermostat_name`, `current_hvac_mode`                       | Yes     | Yes            | Always `0`; mode encoded as a label (billykwooten convention).                                                                               |
+| `ecobee_connected`              | `thermostat_id`, `thermostat_name`                                            | Yes     | Partial        | Beehive: cloud reachability. Home Assistant: `1` when climate entity is not `unavailable`. *(extension)*                                   |
+| `ecobee_temperature`            | `thermostat_id`, `thermostat_name`, `sensor_id`, `sensor_name`, `sensor_type` | Yes     | Yes            | Per-sensor temperature, degrees. Home Assistant: related entities matched by climate stem.                                                   |
+| `ecobee_humidity`               | `thermostat_id`, `thermostat_name`, `sensor_id`, `sensor_name`, `sensor_type` | Yes     | Yes            | Per-sensor humidity, percent.                                                                                                                |
+| `ecobee_occupancy`              | `thermostat_id`, `thermostat_name`, `sensor_id`, `sensor_name`, `sensor_type` | Yes     | Yes            | Per-sensor occupancy (0 or 1). Home Assistant: when matching `binary_sensor.`* exists.                                                       |
+| `ecobee_in_use`                 | `thermostat_id`, `thermostat_name`, `sensor_id`, `sensor_name`, `sensor_type` | Yes     | Partial        | Beehive: included in thermostat average. Home Assistant: always `0`.                                                                         |
+| `ecobee_actual_humidity`        | `thermostat_id`, `thermostat_name`                                            | Yes     | Yes            | Thermostat humidity, percent. *(extension)*                                                                                                  |
+| `ecobee_desired_humidity`       | `thermostat_id`, `thermostat_name`                                            | Yes     | No             | Humidifier setpoint, percent. *(extension)*                                                                                                  |
+| `ecobee_desired_dehumidity`     | `thermostat_id`, `thermostat_name`                                            | Yes     | No             | Dehumidifier setpoint, percent. *(extension)*                                                                                                |
+| `ecobee_raw_temperature`        | `thermostat_id`, `thermostat_name`                                            | Yes     | No             | Dry-bulb temperature at the thermostat. *(extension)*                                                                                        |
+| `ecobee_desired_fan_mode`       | `thermostat_id`, `thermostat_name`, `desired_fan_mode`                        | Yes     | Partial        | Fan mode as label (`auto`, `on`). Home Assistant: when `fan_mode` attribute is present. *(extension)*                                        |
+| `ecobee_current_climate`        | `thermostat_id`, `thermostat_name`, `current_climate`                         | Yes     | Partial        | Active schedule climate as label. Home Assistant: from `preset_mode` / `climate_mode`. *(extension)*                                         |
+| `ecobee_hold_active`            | `thermostat_id`, `thermostat_name`                                            | Yes     | Partial        | Beehive: real hold/DR state. Home Assistant: always `0`. *(extension)*                                                                       |
+| `ecobee_follow_me_comfort`      | `thermostat_id`, `thermostat_name`                                            | Yes     | Partial        | Beehive: real setting. Home Assistant: always `0`. *(extension)*                                                                             |
+| `ecobee_smart_circulation`      | `thermostat_id`, `thermostat_name`                                            | Yes     | Partial        | Beehive: real setting. Home Assistant: always `0`. *(extension)*                                                                             |
+| `ecobee_heat_stages`            | `thermostat_id`, `thermostat_name`                                            | Yes     | No             | Configured heating stages. *(extension)*                                                                                                       |
+| `ecobee_cool_stages`            | `thermostat_id`, `thermostat_name`                                            | Yes     | No             | Configured cooling stages. *(extension)*                                                                                                     |
 
 
 ### Forecast / outdoor weather *(extension)*
@@ -431,27 +336,27 @@ Every metric row lists availability for each backend:
 Beehive reads the thermostat's paired weather station. Home Assistant maps linked `weather.`* entities (auto-discovered or via `weather_entities`). Missing readings are suppressed. Metric names use the `ecobee_forecast_*` prefix for Grafana dashboard compatibility.
 
 
-| Metric                                         | Labels                                        | Beehive | Home Assistant | HomeKit | Description                                                        |
-| ---------------------------------------------- | --------------------------------------------- | ------- | -------------- | ------- | ------------------------------------------------------------------ |
-| `ecobee_forecast_temperature`                  | `thermostat_id`, `thermostat_name`, `station` | Yes     | Yes            | No      | Outdoor temperature, degrees.                                      |
-| `ecobee_forecast_relative_humidity`            | `thermostat_id`, `thermostat_name`, `station` | Yes     | Yes            | No      | Outdoor relative humidity, percent.                                |
-| `ecobee_forecast_pressure_mb`                  | `thermostat_id`, `thermostat_name`, `station` | Yes     | Yes            | No      | Sea-level pressure, millibars.                                     |
-| `ecobee_forecast_dewpoint`                     | `thermostat_id`, `thermostat_name`, `station` | Yes     | Yes            | No      | Outdoor dewpoint, degrees.                                         |
-| `ecobee_forecast_wind_speed_mph`               | `thermostat_id`, `thermostat_name`, `station` | Yes     | Yes            | No      | Wind speed, mph.                                                   |
-| `ecobee_forecast_wind_gust_mph`                | `thermostat_id`, `thermostat_name`, `station` | Yes     | Partial        | No      | Wind gust, mph. Home Assistant: when HA exposes `wind_gust_speed`. |
-| `ecobee_forecast_wind_bearing_degrees`         | `thermostat_id`, `thermostat_name`, `station` | Yes     | Yes            | No      | Wind bearing, degrees.                                             |
-| `ecobee_forecast_visibility`                   | `thermostat_id`, `thermostat_name`, `station` | Yes     | Yes            | No      | Visibility, meters (`* 0.000621371` for miles in Grafana).         |
-| `ecobee_forecast_probability_of_precipitation` | `thermostat_id`, `thermostat_name`, `station` | Yes     | Yes            | No      | Precipitation probability, percent.                                |
-| `ecobee_forecast_temp_high`                    | `thermostat_id`, `thermostat_name`, `station` | Yes     | Yes            | No      | Forecast daily high, degrees.                                      |
-| `ecobee_forecast_temp_low`                     | `thermostat_id`, `thermostat_name`, `station` | Yes     | Yes            | No      | Forecast daily low, degrees.                                       |
+| Metric                                         | Labels                                        | Beehive | Home Assistant | Description                                                        |
+| ---------------------------------------------- | --------------------------------------------- | ------- | -------------- | ------------------------------------------------------------------ |
+| `ecobee_forecast_temperature`                  | `thermostat_id`, `thermostat_name`, `station` | Yes     | Yes            | Outdoor temperature, degrees.                                      |
+| `ecobee_forecast_relative_humidity`            | `thermostat_id`, `thermostat_name`, `station` | Yes     | Yes            | Outdoor relative humidity, percent.                                |
+| `ecobee_forecast_pressure_mb`                  | `thermostat_id`, `thermostat_name`, `station` | Yes     | Yes            | Sea-level pressure, millibars.                                     |
+| `ecobee_forecast_dewpoint`                     | `thermostat_id`, `thermostat_name`, `station` | Yes     | Yes            | Outdoor dewpoint, degrees.                                         |
+| `ecobee_forecast_wind_speed_mph`               | `thermostat_id`, `thermostat_name`, `station` | Yes     | Yes            | Wind speed, mph.                                                   |
+| `ecobee_forecast_wind_gust_mph`                | `thermostat_id`, `thermostat_name`, `station` | Yes     | Partial        | Wind gust, mph. Home Assistant: when HA exposes `wind_gust_speed`. |
+| `ecobee_forecast_wind_bearing_degrees`         | `thermostat_id`, `thermostat_name`, `station` | Yes     | Yes            | Wind bearing, degrees.                                             |
+| `ecobee_forecast_visibility`                   | `thermostat_id`, `thermostat_name`, `station` | Yes     | Yes            | Visibility, meters (`* 0.000621371` for miles in Grafana).         |
+| `ecobee_forecast_probability_of_precipitation` | `thermostat_id`, `thermostat_name`, `station` | Yes     | Yes            | Precipitation probability, percent.                                |
+| `ecobee_forecast_temp_high`                    | `thermostat_id`, `thermostat_name`, `station` | Yes     | Yes            | Forecast daily high, degrees.                                      |
+| `ecobee_forecast_temp_low`                     | `thermostat_id`, `thermostat_name`, `station` | Yes     | Yes            | Forecast daily low, degrees.                                       |
 
 
 ### Equipment runtime *(extension)*
 
 
-| Metric                     | Labels                                          | Beehive | Home Assistant | HomeKit | Description                                                                                                                                                                                             |
-| -------------------------- | ----------------------------------------------- | ------- | -------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ecobee_equipment_running` | `thermostat_id`, `thermostat_name`, `equipment` | Yes     | Partial        | Partial | Replaces legacy `ecobee_last_interval_energized_state`. Beehive: full `equipmentStatus` list. Home Assistant: ecobee cloud `equipment_running` CSV or `hvac_action` map. HomeKit: heating/cooling only. |
+| Metric                     | Labels                                          | Beehive | Home Assistant | Description                                                                                                                                                  |
+| -------------------------- | ----------------------------------------------- | ------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ecobee_equipment_running` | `thermostat_id`, `thermostat_name`, `equipment` | Yes     | Partial        | Replaces legacy `ecobee_last_interval_energized_state`. Beehive: full `equipmentStatus` list. Home Assistant: ecobee cloud `equipment_running` CSV or `hvac_action` map. |
 
 
 Known equipment identifiers: `heatPump`, `heatPump2`, `heatPump3`, `compCool1`, `compCool2`, `auxHeat1`, `auxHeat2`, `auxHeat3`, `fan`, `humidifier`, `dehumidifier`, `ventilator`, `economizer`, `compHotWater`, `auxHotWater`.
@@ -459,11 +364,11 @@ Known equipment identifiers: `heatPump`, `heatPump2`, `heatPump3`, `compCool1`, 
 ### Hold / events *(extension)*
 
 
-| Metric                  | Labels                                           | Beehive | Home Assistant | HomeKit | Description                  |
-| ----------------------- | ------------------------------------------------ | ------- | -------------- | ------- | ---------------------------- |
-| `ecobee_hold_heat_temp` | `thermostat_id`, `thermostat_name`               | Yes     | No             | No      | Heat hold setpoint, degrees. |
-| `ecobee_hold_cool_temp` | `thermostat_id`, `thermostat_name`               | Yes     | No             | No      | Cool hold setpoint, degrees. |
-| `ecobee_event_type`     | `thermostat_id`, `thermostat_name`, `event_type` | Yes     | No             | No      | Event type as label.         |
+| Metric                  | Labels                                           | Beehive | Home Assistant | Description                  |
+| ----------------------- | ------------------------------------------------ | ------- | -------------- | ---------------------------- |
+| `ecobee_hold_heat_temp` | `thermostat_id`, `thermostat_name`               | Yes     | No             | Heat hold setpoint, degrees. |
+| `ecobee_hold_cool_temp` | `thermostat_id`, `thermostat_name`               | Yes     | No             | Cool hold setpoint, degrees. |
+| `ecobee_event_type`     | `thermostat_id`, `thermostat_name`, `event_type` | Yes     | No             | Event type as label.         |
 
 
 ### Extended runtime *(extension)*
@@ -471,12 +376,12 @@ Known equipment identifiers: `heatPump`, `heatPump2`, `heatPump3`, `compCool1`, 
 Per-equipment runtime from the last three 5-minute intervals (interval `0` = oldest, `2` = newest). Values are seconds within each bucket (0–300).
 
 
-| Metric                              | Labels                                                      | Beehive | Home Assistant | HomeKit | Description                                                                                                      |
-| ----------------------------------- | ----------------------------------------------------------- | ------- | -------------- | ------- | ---------------------------------------------------------------------------------------------------------------- |
-| `ecobee_equipment_runtime_seconds`  | `thermostat_id`, `thermostat_name`, `equipment`, `interval` | Yes     | No             | No      | Replaces legacy `ecobee_last_interval_runtime`. Equipment runtime per 5-minute bucket (`interval="2"` = newest). |
-| `ecobee_demand_management_offset`   | `thermostat_id`, `thermostat_name`, `interval`              | Yes     | No             | No      | Demand-management temperature offset, degrees.                                                                   |
-| `ecobee_current_electricity_bill`   | `thermostat_id`, `thermostat_name`                          | Yes     | No             | No      | Current utility meter bill (if paired).                                                                          |
-| `ecobee_projected_electricity_bill` | `thermostat_id`, `thermostat_name`                          | Yes     | No             | No      | Projected utility meter bill (if paired).                                                                        |
+| Metric                              | Labels                                                      | Beehive | Home Assistant | Description                                                                                                      |
+| ----------------------------------- | ----------------------------------------------------------- | ------- | -------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `ecobee_equipment_runtime_seconds`  | `thermostat_id`, `thermostat_name`, `equipment`, `interval` | Yes     | No             | Replaces legacy `ecobee_last_interval_runtime`. Equipment runtime per 5-minute bucket (`interval="2"` = newest). |
+| `ecobee_demand_management_offset`   | `thermostat_id`, `thermostat_name`, `interval`              | Yes     | No             | Demand-management temperature offset, degrees.                                                                   |
+| `ecobee_current_electricity_bill`   | `thermostat_id`, `thermostat_name`                          | Yes     | No             | Current utility meter bill (if paired).                                                                          |
+| `ecobee_projected_electricity_bill` | `thermostat_id`, `thermostat_name`                          | Yes     | No             | Projected utility meter bill (if paired).                                                                        |
 
 
 Equipment names in extended runtime: `heatPump1`, `heatPump2`, `auxHeat1`, `auxHeat2`, `auxHeat3`, `cool1`, `cool2`, `fan`, `humidifier`, `dehumidifier`, `ventilator`, `economizer`.
@@ -484,9 +389,9 @@ Equipment names in extended runtime: `heatPump1`, `heatPump2`, `auxHeat1`, `auxH
 ### Alerts *(extension)*
 
 
-| Metric                | Labels                                                           | Beehive | Home Assistant | HomeKit | Description                  |
-| --------------------- | ---------------------------------------------------------------- | ------- | -------------- | ------- | ---------------------------- |
-| `ecobee_alert_active` | `thermostat_id`, `thermostat_name`, `alert_type`, `alert_number` | Yes     | No             | No      | One series per active alert. |
+| Metric                | Labels                                                           | Beehive | Home Assistant | Description                  |
+| --------------------- | ---------------------------------------------------------------- | ------- | -------------- | ---------------------------- |
+| `ecobee_alert_active` | `thermostat_id`, `thermostat_name`, `alert_type`, `alert_number` | Yes     | No             | One series per active alert. |
 
 
 ---
@@ -508,8 +413,7 @@ Equipment names in extended runtime: `heatPump1`, `heatPump2`, `auxHeat1`, `auxH
                                                          |
                                           impl 1: BeehiveProvider        (cloud)
                                           impl 2: HomeAssistantProvider  (HA REST)
-                                          impl 3: HomeKitProvider        (local LAN)
-                                          impl 4: FakeProvider           (demo/test)
+                                          impl 3: FakeProvider           (demo/test)
 ```
 
 `ThermostatProvider` is the seam: anything that can return a
@@ -523,7 +427,6 @@ Short-term:
 - ~~Implement Auth0 + PKCE login + refresh.~~ Done.
 - ~~Implement the data-API call against `api.ecobee.com/1/thermostat`.~~ Done.
 - ~~Add a fixture-based parsing test for the response shape.~~ Done.
-- ~~Native HomeKit `ThermostatProvider` via in-tree `housekey` crate.~~ Done.
 
 Medium-term (parity-plus):
 

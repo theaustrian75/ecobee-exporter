@@ -1,8 +1,7 @@
 //! Abstraction over "things that can return thermostat snapshots."
 //!
 //! The collector depends only on this trait, so swapping the Beehive
-//! swapping the Beehive implementation for the local HomeKit one, or for tests, is a
-//! single-line change.
+//! implementation for Home Assistant or a test double is a single-line change.
 
 use async_trait::async_trait;
 

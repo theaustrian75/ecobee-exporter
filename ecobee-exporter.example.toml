@@ -19,8 +19,8 @@ state_file = "./ecobee-exporter.state.json"
 # for building dashboards and Prometheus configs without credentials.
 demo = false
 
-# Data source: "beehive" (cloud Auth0 API, default) or "homekit" (local
-# HomeKit HAP — see README "HomeKit backend"). Same values work as
+# Data source: "beehive" (cloud Auth0 API, default) or "homeassistant"
+# (Home Assistant REST — see README "Home Assistant backend"). Same values work as
 # `--provider` on the CLI or `ECOBEE_PROVIDER` in the environment.
 # provider = "homeassistant"
 
@@ -41,9 +41,6 @@ demo = false
 # `cargo run --bin ecobee-login`. Set this here only to transplant a
 # refresh token between machines or to override what's on disk.
 # refresh_token = "…"
-
-# [homekit]
-# pairing_file = "./homekit-pairings.json"
 
 # [homeassistant]
 # url = "http://homeassistant.local:8123"

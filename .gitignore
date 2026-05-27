@@ -11,9 +11,6 @@ ecobee-exporter.toml
 ecobee-exporter.state.json
 *.state.json
 
-# HomeKit bridge pairing data (see `ecobee-homekit-pair`).
-homekit-pairings.json
-
 # Editor / IDE
 .idea/
 .vscode/

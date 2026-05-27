@@ -7,7 +7,6 @@ RUN apk add --no-cache musl-dev pkgconfig
 WORKDIR /build
 
 COPY Cargo.toml Cargo.lock ./
-COPY crates/housekey ./crates/housekey
 COPY src ./src
 
 RUN cargo build --locked --release --bin ecobee-exporter --bin ecobee-login

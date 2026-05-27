@@ -9,7 +9,6 @@ use ecobee_exporter::{
     collector::Collector,
     config::{CliOverrides, Config, ProviderKind, parse_header_pair, parse_poll_interval},
     homeassistant::HomeAssistantProvider,
-    homekit::HomeKitProvider,
     metrics::Metrics,
     provider::{FakeProvider, ThermostatProvider},
     server::{AppState, router, run as serve},
@@ -19,7 +18,7 @@ use ecobee_exporter::{
 #[command(
     name = "ecobee-exporter",
     version,
-    about = "Prometheus exporter for ecobee thermostats (Beehive or HomeKit backend)"
+    about = "Prometheus exporter for ecobee thermostats (Beehive or Home Assistant backend)"
 )]
 struct Cli {
     /// Path to a TOML config file.
@@ -30,7 +29,7 @@ struct Cli {
     #[arg(long, env = "ECOBEE_DEMO", action = ArgAction::SetTrue)]
     demo: bool,
 
-    /// Data source: `beehive`, `homekit`, or `homeassistant`.
+    /// Data source: `beehive` or `homeassistant`.
     #[arg(long, value_parser = clap::value_parser!(ProviderKind), env = "ECOBEE_PROVIDER")]
     provider: Option<ProviderKind>,
 
@@ -48,9 +47,6 @@ struct Cli {
 
     #[command(flatten)]
     beehive: BeehiveCli,
-
-    #[command(flatten)]
-    homekit: HomeKitCli,
 
     #[command(flatten)]
     homeassistant: HomeAssistantCli,
@@ -87,13 +83,6 @@ struct BeehiveCli {
     /// Extra Beehive request header (`KEY=VALUE`). Repeat for multiple headers.
     #[arg(long = "beehive-header", value_name = "KEY=VALUE", action = ArgAction::Append)]
     header: Vec<String>,
-}
-
-#[derive(Debug, Parser)]
-struct HomeKitCli {
-    /// JSON file storing HomeKit pairing keys.
-    #[arg(long = "homekit-pairing-file", env = "ECOBEE_HOMEKIT__PAIRING_FILE")]
-    pairing_file: Option<PathBuf>,
 }
 
 #[derive(Debug, Parser)]
@@ -135,7 +124,6 @@ impl Cli {
             beehive_user_agent: self.beehive.user_agent.clone(),
             beehive_refresh_token: self.beehive.refresh_token.clone(),
             beehive_headers,
-            homekit_pairing_file: self.homekit.pairing_file.clone(),
             homeassistant_url: self.homeassistant.url.clone(),
             homeassistant_token: self.homeassistant.token.clone(),
             homeassistant_climate_entities: self.homeassistant.climate_entities.clone(),
@@ -184,18 +172,6 @@ async fn run() -> anyhow::Result<()> {
                 BeehiveProvider::new(&cfg.beehive, cfg.state_file.clone())
                     .context("initializing Beehive provider")?,
             ),
-            ProviderKind::Homekit => {
-                tracing::warn!(
-                    "homekit provider is untested; prefer provider=homeassistant if HA already polls your ecobees"
-                );
-                tracing::info!(
-                    pairing_file = %cfg.homekit.pairing_file.display(),
-                    "using native HomeKit provider"
-                );
-                Arc::new(
-                    HomeKitProvider::new(&cfg.homekit).context("initializing HomeKit provider")?,
-                )
-            }
             ProviderKind::Homeassistant => {
                 tracing::info!(
                     url = %cfg.homeassistant.url,

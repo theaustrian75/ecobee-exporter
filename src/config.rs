@@ -24,7 +24,6 @@ use serde::{Deserialize, Serialize};
 pub enum ProviderKind {
     #[default]
     Beehive,
-    Homekit,
     Homeassistant,
 }
 
@@ -34,10 +33,9 @@ impl FromStr for ProviderKind {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.trim().to_ascii_lowercase().as_str() {
             "beehive" => Ok(Self::Beehive),
-            "homekit" => Ok(Self::Homekit),
             "homeassistant" | "ha" => Ok(Self::Homeassistant),
             other => Err(format!(
-                "invalid provider {other:?}; expected `beehive`, `homekit`, or `homeassistant`"
+                "invalid provider {other:?}; expected `beehive` or `homeassistant`"
             )),
         }
     }
@@ -67,18 +65,14 @@ pub struct Config {
     #[serde(default)]
     pub demo: bool,
 
-    /// Data source: `beehive` (cloud Auth0 API, default) or `homekit` (local
-    /// HomeKit HAP). Ignored when `demo = true`.
+    /// Data source: `beehive` (cloud Auth0 API, default) or `homeassistant`
+    /// (Home Assistant REST). Ignored when `demo = true`.
     #[serde(default)]
     pub provider: ProviderKind,
 
     /// Credentials for the Beehive API. Used when `provider = "beehive"`.
     #[serde(default)]
     pub beehive: BeehiveConfig,
-
-    /// Settings for native HomeKit access. Used when `provider = "homekit"`.
-    #[serde(default)]
-    pub homekit: HomeKitConfig,
 
     /// Settings for Home Assistant REST access. Used when `provider = "homeassistant"`.
     #[serde(default)]
@@ -143,28 +137,6 @@ pub struct BeehiveConfig {
     pub refresh_token: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct HomeKitConfig {
-    /// JSON file storing HomeKit pairing keys (see `ecobee-homekit-pair`).
-    #[serde(default = "HomeKitConfig::default_pairing_file")]
-    pub pairing_file: PathBuf,
-}
-
-impl HomeKitConfig {
-    fn default_pairing_file() -> PathBuf {
-        PathBuf::from("./homekit-pairings.json")
-    }
-}
-
-impl Default for HomeKitConfig {
-    fn default() -> Self {
-        Self {
-            pairing_file: Self::default_pairing_file(),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HomeAssistantConfig {
@@ -199,7 +171,6 @@ pub struct CliOverrides {
     pub beehive_user_agent: Option<String>,
     pub beehive_refresh_token: Option<String>,
     pub beehive_headers: Vec<(String, String)>,
-    pub homekit_pairing_file: Option<PathBuf>,
     pub homeassistant_url: Option<String>,
     pub homeassistant_token: Option<String>,
     pub homeassistant_climate_entities: Vec<String>,
@@ -284,9 +255,6 @@ impl Config {
         if !cli.beehive_headers.is_empty() {
             self.beehive.extra_headers.clone_from(&cli.beehive_headers);
         }
-        if let Some(pairing_file) = &cli.homekit_pairing_file {
-            self.homekit.pairing_file.clone_from(pairing_file);
-        }
         if let Some(url) = &cli.homeassistant_url {
             self.homeassistant.url.clone_from(url);
         }
@@ -353,7 +321,6 @@ impl Default for Config {
             demo: false,
             provider: ProviderKind::Beehive,
             beehive: BeehiveConfig::default(),
-            homekit: HomeKitConfig::default(),
             homeassistant: HomeAssistantConfig::default(),
             tls: None,
         }
@@ -366,20 +333,10 @@ mod tests {
     use figment::{Figment, providers::Toml};
 
     #[test]
-    fn homekit_config_defaults() {
-        let cfg = HomeKitConfig::default();
-        assert_eq!(cfg.pairing_file, PathBuf::from("./homekit-pairings.json"));
-    }
-
-    #[test]
     fn provider_parses_from_str() {
         assert_eq!(
             "beehive".parse::<ProviderKind>().unwrap(),
             ProviderKind::Beehive
-        );
-        assert_eq!(
-            "homekit".parse::<ProviderKind>().unwrap(),
-            ProviderKind::Homekit
         );
         assert_eq!(
             "homeassistant".parse::<ProviderKind>().unwrap(),
@@ -390,26 +347,26 @@ mod tests {
             ProviderKind::Homeassistant
         );
         assert!("cloud".parse::<ProviderKind>().is_err());
+        assert!("homekit".parse::<ProviderKind>().is_err());
     }
 
     #[test]
-    fn deserializes_homekit_provider_and_pairing_file() {
+    fn deserializes_homeassistant_provider() {
         let cfg: Config = Figment::new()
             .merge(Toml::string(
                 r#"
-provider = "homekit"
-[homekit]
-pairing_file = "/var/lib/ecobee/pairings.json"
+provider = "homeassistant"
+[homeassistant]
+url = "http://homeassistant.local:8123"
+token = "secret"
 "#,
             ))
             .extract()
             .expect("figment extract");
 
-        assert_eq!(cfg.provider, ProviderKind::Homekit);
-        assert_eq!(
-            cfg.homekit.pairing_file,
-            PathBuf::from("/var/lib/ecobee/pairings.json")
-        );
+        assert_eq!(cfg.provider, ProviderKind::Homeassistant);
+        assert_eq!(cfg.homeassistant.url, "http://homeassistant.local:8123");
+        assert_eq!(cfg.homeassistant.token, "secret");
     }
 
     #[test]
@@ -427,19 +384,16 @@ pairing_file = "/var/lib/ecobee/pairings.json"
         cfg.apply_cli_overrides(&CliOverrides {
             listen_addr: Some("127.0.0.1:9099".parse().unwrap()),
             poll_interval: Some(Duration::from_mins(5)),
-            provider: Some(ProviderKind::Homekit),
-            homekit_pairing_file: Some(PathBuf::from("/tmp/pairings.json")),
+            provider: Some(ProviderKind::Homeassistant),
+            homeassistant_url: Some("http://127.0.0.1:8123".to_string()),
             beehive_endpoint: Some("https://example.test/1".to_string()),
             beehive_headers: vec![("x-test".into(), "1".into())],
             ..CliOverrides::default()
         });
         assert_eq!(cfg.listen_addr, "127.0.0.1:9099".parse().unwrap());
         assert_eq!(cfg.poll_interval, Duration::from_mins(5));
-        assert_eq!(cfg.provider, ProviderKind::Homekit);
-        assert_eq!(
-            cfg.homekit.pairing_file,
-            PathBuf::from("/tmp/pairings.json")
-        );
+        assert_eq!(cfg.provider, ProviderKind::Homeassistant);
+        assert_eq!(cfg.homeassistant.url, "http://127.0.0.1:8123");
         assert_eq!(
             cfg.beehive.endpoint.as_deref(),
             Some("https://example.test/1")

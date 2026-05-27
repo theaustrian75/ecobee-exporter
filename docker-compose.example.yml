@@ -1,6 +1,6 @@
 # Copy and adjust as needed.
 #
-# Backend: set ECOBEE_PROVIDER=beehive (default), homeassistant, or homekit.
+# Backend: set ECOBEE_PROVIDER=beehive (default) or homeassistant.
 # CLI equivalent: cargo run -- --provider homeassistant
 #
 # ---------------------------------------------------------------------------
@@ -13,18 +13,6 @@
 # Open the printed URL in a browser, complete MFA, copy the full callback URL
 # from the address bar, and paste it at the prompt. Then start the exporter:
 #   docker compose -f docker-compose.example.yml up -d
-#
-# ---------------------------------------------------------------------------
-# HomeKit backend (local LAN)
-# ---------------------------------------------------------------------------
-# Pair on the host first (mDNS discovery needs host networking):
-#   cargo run --bin ecobee-homekit-pair -- --discover-only
-#   cargo run --bin ecobee-homekit-pair -- \
-#     --device-id AA:BB:CC:DD:EE:FF --code 12345678 --alias ecobee \
-#     --pairing-file ./homekit-pairings.json
-#
-# Start the HomeKit exporter (uses host networking to reach the thermostat):
-#   docker compose -f docker-compose.example.yml --profile homekit up -d
 #
 # ---------------------------------------------------------------------------
 # Home Assistant backend (REST API)
@@ -64,24 +52,6 @@ services:
       - UID=1000
       - GID=1000
       # IANA timezone for container logs (tzdata is installed in the image).
-      - TZ=America/New_York
-      - ECOBEE_LISTEN_ADDR=0.0.0.0:9098
-      - ECOBEE_POLL_INTERVAL=3m
-
-  # HomeKit (local LAN). Requires `--profile homekit`.
-  ecobee-exporter-homekit:
-    profiles: [homekit]
-    image: ghcr.io/theaustrian75/ecobee-exporter:latest
-    restart: unless-stopped
-    network_mode: host
-    volumes:
-      # Create via `ecobee-homekit-pair` on the host before starting.
-      - ./homekit-pairings.json:/var/lib/ecobee-exporter/homekit-pairings.json:ro
-    environment:
-      - ECOBEE_PROVIDER=homekit
-      - ECOBEE_HOMEKIT__PAIRING_FILE=/var/lib/ecobee-exporter/homekit-pairings.json
-      - UID=1000
-      - GID=1000
       - TZ=America/New_York
       - ECOBEE_LISTEN_ADDR=0.0.0.0:9098
       - ECOBEE_POLL_INTERVAL=3m
