@@ -19,9 +19,18 @@
 //! emitting value `0` and encoding the mode in a label so PromQL can match
 //! on it directly.
 
+use std::sync::RwLock;
+
 use prometheus::{Gauge, GaugeVec, IntCounter, Opts, Registry, TextEncoder};
 
 use crate::model::Thermostat;
+
+/// Whether the collector has a fresh snapshot from upstream.
+#[derive(Debug, Clone, Default)]
+struct UpstreamHealth {
+    ready: bool,
+    last_error: Option<String>,
+}
 
 const RUNTIME_LABELS: &[&str] = &["thermostat_id", "thermostat_name"];
 const FORECAST_LABELS: &[&str] = &["thermostat_id", "thermostat_name", "station"];
@@ -71,6 +80,7 @@ const KNOWN_EQUIPMENT: &[&str] = &[
 
 pub struct Metrics {
     pub registry: Registry,
+    upstream: RwLock<UpstreamHealth>,
     fetch_time: Gauge,
     fetch_failures: IntCounter,
 
@@ -458,6 +468,7 @@ impl Metrics {
 
         Ok(Self {
             registry,
+            upstream: RwLock::new(UpstreamHealth::default()),
             fetch_time,
             fetch_failures,
             actual_temperature,
@@ -515,6 +526,10 @@ impl Metrics {
     )]
     pub fn record_snapshot(&self, thermostats: &[Thermostat], fetch_secs: f64) {
         self.fetch_time.set(fetch_secs);
+        if let Ok(mut health) = self.upstream.write() {
+            health.ready = true;
+            health.last_error = None;
+        }
 
         for t in thermostats {
             let runtime_labels = [t.identifier.as_str(), t.name.as_str()];
@@ -822,8 +837,28 @@ impl Metrics {
         }
     }
 
-    pub fn record_fetch_failure(&self) {
+    pub fn record_fetch_failure(&self, error: &str) {
         self.fetch_failures.inc();
+        if let Ok(mut health) = self.upstream.write() {
+            health.ready = false;
+            health.last_error = Some(error.to_string());
+        }
+    }
+
+    /// `Ok(())` when the last collector poll succeeded; otherwise the error detail.
+    pub fn upstream_status(&self) -> Result<(), String> {
+        let health = self
+            .upstream
+            .read()
+            .map_err(|_| "upstream health lock poisoned".to_string())?;
+        if health.ready {
+            Ok(())
+        } else {
+            Err(health
+                .last_error
+                .clone()
+                .unwrap_or_else(|| "no successful fetch yet".to_string()))
+        }
     }
 
     /// Render the registry as Prometheus text-exposition format.
