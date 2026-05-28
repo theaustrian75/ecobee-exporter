@@ -27,8 +27,8 @@ RUN apk add --no-cache ca-certificates tzdata su-exec wget \
 COPY --from=builder /build/target/release/ecobee-exporter /usr/local/bin/ecobee-exporter
 COPY --from=builder /build/target/release/ecobee-login /usr/local/bin/ecobee-login
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-COPY docker-healthcheck.sh /usr/local/bin/healthcheck.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/healthcheck.sh
+COPY docker-healthcheck.sh /usr/local/bin/docker-healthcheck.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/docker-healthcheck.sh
 
 WORKDIR /var/lib/ecobee-exporter
 
@@ -38,10 +38,9 @@ ENV GID=1000
 
 EXPOSE 9098
 
-# Container healthcheck probes /liveness (process only). Use /healthz or /readiness
-# in orchestrators when upstream readiness matters. Script path works with Podman
-# quadlets; CI builds use Docker v2 mediatypes so Podman reads Config.Healthcheck.
+# docker-healthcheck.sh probes /healthz (upstream connectivity). CI uses Docker v2
+# mediatypes so Podman reads Config.Healthcheck (containers/podman#18904).
 HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
-    CMD ["/usr/local/bin/healthcheck.sh"]
+    CMD ["/usr/local/bin/docker-healthcheck.sh"]
 
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

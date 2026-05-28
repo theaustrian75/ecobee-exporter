@@ -235,18 +235,6 @@ cert_file = "/etc/letsencrypt/live/example/fullchain.pem"
 key_file = "/etc/letsencrypt/live/example/privkey.pem"
 ```
 
-The image `HEALTHCHECK` runs `/usr/local/bin/healthcheck.sh`, which probes `/liveness` (process liveness only). The script switches to HTTPS automatically when `ECOBEE_TLS__CERT_FILE` or `ECOBEE_TLS_CERT_FILE` is set.
-
-**Podman:** OCI images do not carry Docker-style `HEALTHCHECK` metadata — Podman ignores it unless the image uses Docker v2 mediatypes. GHCR images are built with `provenance: false`, `sbom: false`, and `oci-mediatypes=false` so Podman can read `Config.Healthcheck` ([podman#18904](https://github.com/containers/podman/issues/18904)). Pull a current `:latest` after CI publishes a new build.
-
-If Podman still reports `has no defined healthcheck` (older image or local `podman build` without `--format docker`):
-
-- Use `docker-compose.example.yml` — it defines an explicit healthcheck on every service.
-- Or pass `--health-cmd=/usr/local/bin/healthcheck.sh` (plus `--health-interval=30s`, etc.) to `podman run`.
-- Or build locally with `podman build --format docker -t ecobee-exporter:local .`
-
-Use `/liveness` (or the script) for container health — not `/healthz`, which live-probes upstream connectivity and marks the container unhealthy when ecobee/HA is down even if the exporter process is fine.
-
 ### Docker compose
 
 Copy `docker-compose.example.yml` and adjust the image tag if needed:
@@ -260,7 +248,11 @@ docker compose -f docker-compose.example.yml up -d
 curl http://localhost:9098/metrics
 ```
 
-**TLS:** use the `tls` profile and mount PEM files (`healthcheck.sh` detects TLS from the env vars):
+The image healthcheck script (`docker-healthcheck.sh`) probes `/healthz` on `127.0.0.1` and the listen port from `ECOBEE_LISTEN_ADDR` (default `9098`; HTTP by default, HTTPS when `ECOBEE_TLS__CERT_FILE` and `ECOBEE_TLS__KEY_FILE` point at existing PEM files). The container is marked unhealthy when ecobee or Home Assistant is unreachable. Use `/liveness` for a process-only probe (always `200 ok`) in Kubernetes liveness checks.
+
+**Podman:** GHCR images are built with `provenance: false`, `sbom: false`, and `oci-mediatypes=false` so embedded `HEALTHCHECK` metadata is preserved ([podman#18904](https://github.com/containers/podman/issues/18904)). If Podman still reports `has no defined healthcheck`, use `docker-compose.example.yml` (explicit healthcheck), `--health-cmd=/usr/local/bin/docker-healthcheck.sh`, or `podman build --format docker`.
+
+**TLS:** use the `tls` profile and mount PEM files:
 
 ```sh
 mkdir -p certs
@@ -269,7 +261,7 @@ docker compose -f docker-compose.example.yml --profile tls up -d
 curl https://localhost:9098/metrics
 ```
 
-Configure Prometheus with `scheme: https`. For self-signed certificates, the image healthcheck script already passes `--no-check-certificate` when TLS is enabled.
+Configure Prometheus with `scheme: https`. The healthcheck script passes `--no-check-certificate` when exporter TLS is enabled.
 
 **Home Assistant:** create a `.env` file with your long-lived token, then start the `homeassistant` profile:
 
@@ -436,9 +428,9 @@ By default the collector tracks whether the last upstream poll succeeded:
 
 | Endpoint | Behavior |
 |----------|----------|
-| `/liveness` | Always `200 ok` — process is running (use for Docker/Podman `HEALTHCHECK`) |
+| `/healthz` | Upstream readiness probe — live-probes connectivity; `503` when the target is unreachable |
 | `/readiness` | `200 ok` after a successful fetch; `503` when the last fetch failed or none has succeeded yet (cached mode, default) |
-| `/healthz` | Always live-probes upstream connectivity; `503` when the target is unreachable |
+| `/liveness` | Always `200 ok` — process is running |
 | `/metrics` | `503` when upstream is unhealthy (stale data is not served); `200` with Prometheus text otherwise |
 
 Set `health_probe_mode = "live"` (or `ECOBEE_HEALTH_PROBE_MODE=live`) to fetch upstream on each `/readiness` request instead of using the cached collector status. `/healthz` always performs a live connectivity check. Tune the probe timeout with `health_check_timeout` (default `10s`).
