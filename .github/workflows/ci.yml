@@ -81,9 +81,11 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # OCI attestations omit Docker Config.Healthcheck; Podman needs it (containers/podman#18904).
+          # Podman only reads HEALTHCHECK from Docker v2 image config, not OCI manifests.
+          # provenance/sbom attestations and OCI mediatypes both drop it (containers/podman#18904).
           provenance: false
           sbom: false
+          outputs: type=registry,oci-mediatypes=false
           annotations: |
             manifest:org.opencontainers.image.description=Prometheus exporter for Ecobee thermostats.
 
