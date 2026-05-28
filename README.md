@@ -15,7 +15,7 @@ Pick one backend per exporter instance. See [Beehive backend](#beehive-backend-c
 
 End-to-end functional for both backends.
 
-- HTTP(S) server on `/metrics` and `/healthz` (optional TLS via PEM certificate + key).
+- HTTP(S) server on `/metrics`, `/healthz`, `/readiness`, and `/liveness` (optional TLS via PEM certificate + key).
 - Polling loop with a configurable interval and a 60-second floor.
 - Configuration via TOML file, environment variables, and CLI flags.
 - `--demo` mode that serves canned data without credentials.
@@ -400,7 +400,7 @@ Equipment names in extended runtime: `heatPump1`, `heatPump2`, `auxHeat1`, `auxH
 
 ```
                 +---------------------+
-                |  axum HTTP server   |  /metrics, /healthz
+                |  axum HTTP server   |  /metrics, /healthz, /readiness, /liveness
                 +----------+----------+
                            ^ render()
                 +----------+----------+
@@ -419,6 +419,19 @@ Equipment names in extended runtime: `heatPump1`, `heatPump2`, `auxHeat1`, `auxH
 `ThermostatProvider` is the seam: anything that can return a
 `Vec<Thermostat>` can drive the exporter. All backends share the
 same metrics and HTTP layers.
+
+### Health probes
+
+The collector tracks whether the last upstream poll succeeded:
+
+| Endpoint | Behavior |
+|----------|----------|
+| `/liveness` | Always `200 ok` — process is running |
+| `/readiness` | `200 ok` after a successful fetch; `503` when the last fetch failed or none has succeeded yet |
+| `/healthz` | Same as `/readiness` (Docker/Kubernetes compatibility) |
+| `/metrics` | `503` when upstream is unhealthy (stale data is not served); `200` with Prometheus text otherwise |
+
+On startup (non-demo mode), the exporter retries the first fetch up to three times and exits if upstream stays unreachable. Shutdown on `SIGINT`/`SIGTERM` stops the HTTP server gracefully, then the collector loop.
 
 ## Roadmap
 

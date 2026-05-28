@@ -26,21 +26,26 @@ impl Collector {
         }
     }
 
-    /// Run the polling loop until cancelled. Does one immediate fetch on
-    /// start so `/metrics` is populated before the first scrape lands.
-    pub async fn run(self) -> ! {
+    /// Run the polling loop until `shutdown` completes.
+    ///
+    /// Call [`Self::poll_once`] before spawning if `/metrics` should be warm on
+    /// the first scrape (startup probe or demo bootstrap).
+    pub async fn run(self, mut shutdown: tokio::sync::broadcast::Receiver<()>) {
         let mut ticker = interval(self.poll_interval);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
-        self.poll_once().await;
-
         loop {
-            ticker.tick().await;
-            self.poll_once().await;
+            tokio::select! {
+                _ = shutdown.recv() => break,
+                _ = ticker.tick() => {
+                    let _ = self.poll_once().await;
+                }
+            }
         }
     }
 
-    pub async fn poll_once(&self) {
+    /// Fetch once and update metrics. Returns `true` on success.
+    pub async fn poll_once(&self) -> bool {
         let started = Instant::now();
         match self.provider.fetch().await {
             Ok(snapshot) => {
@@ -51,11 +56,18 @@ impl Collector {
                     "fetched snapshot"
                 );
                 self.metrics.record_snapshot(&snapshot, elapsed);
+                true
             }
             Err(e) => {
+                let message = e.to_string();
                 tracing::error!(error = %e, "fetch failed");
-                self.metrics.record_fetch_failure();
+                self.metrics.record_fetch_failure(&message);
+                false
             }
         }
+    }
+
+    pub fn upstream_status(&self) -> Result<(), String> {
+        self.metrics.upstream_status()
     }
 }

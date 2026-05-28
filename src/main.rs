@@ -11,8 +11,11 @@ use ecobee_exporter::{
     homeassistant::HomeAssistantProvider,
     metrics::Metrics,
     provider::{FakeProvider, ThermostatProvider},
-    server::{AppState, router, run as serve},
+    server::{AppState, router, run as serve, shutdown_signal},
 };
+
+const STARTUP_MAX_ATTEMPTS: u32 = 3;
+const STARTUP_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(500);
 
 #[derive(Debug, Parser)]
 #[command(
@@ -191,23 +194,70 @@ async fn run() -> anyhow::Result<()> {
         Arc::clone(&metrics),
         cfg.poll_interval,
     );
-    let collector_task = tokio::spawn(collector.run());
+
+    if cfg.demo {
+        collector.poll_once().await;
+    } else {
+        probe_upstream(&collector).await?;
+    }
+
+    let (shutdown_tx, shutdown_rx) = tokio::sync::broadcast::channel(1);
+    let collector_task = tokio::spawn(collector.run(shutdown_rx));
 
     let app = router(AppState { metrics });
 
-    tokio::select! {
-        res = serve(app, cfg.listen_addr, cfg.tls.as_ref()) => {
-            res.context("metrics server crashed")?;
-        }
-        _ = collector_task => {
-            anyhow::bail!("collector task exited unexpectedly");
-        }
-        _ = tokio::signal::ctrl_c() => {
-            tracing::info!("received Ctrl-C, shutting down");
-        }
+    serve(app, cfg.listen_addr, cfg.tls.as_ref(), shutdown_signal()).await?;
+
+    let _ = shutdown_tx.send(());
+    if let Err(e) = collector_task.await
+        && e.is_panic()
+    {
+        std::panic::resume_unwind(e.into_panic());
     }
 
+    tracing::info!("ecobee-exporter stopped");
     Ok(())
+}
+
+async fn probe_upstream(collector: &Collector) -> anyhow::Result<()> {
+    tracing::info!(
+        attempts = STARTUP_MAX_ATTEMPTS,
+        "checking upstream connectivity"
+    );
+
+    let mut last_error = "no successful fetch yet".to_string();
+    for attempt in 1..=STARTUP_MAX_ATTEMPTS {
+        if attempt > 1 {
+            let delay = STARTUP_RETRY_DELAY * (attempt - 1);
+            tracing::warn!(
+                attempt,
+                max_attempts = STARTUP_MAX_ATTEMPTS,
+                retry_in = ?delay,
+                "retrying upstream fetch"
+            );
+            tokio::time::sleep(delay).await;
+        }
+
+        tracing::info!(
+            attempt,
+            max_attempts = STARTUP_MAX_ATTEMPTS,
+            "fetching upstream snapshot"
+        );
+
+        if collector.poll_once().await {
+            tracing::info!(attempt, "upstream fetch successful");
+            return Ok(());
+        }
+
+        last_error = collector
+            .upstream_status()
+            .err()
+            .unwrap_or_else(|| "upstream fetch failed".to_string());
+    }
+
+    anyhow::bail!(
+        "failed to fetch upstream data after {STARTUP_MAX_ATTEMPTS} attempts: {last_error}"
+    );
 }
 
 fn init_tracing() {
