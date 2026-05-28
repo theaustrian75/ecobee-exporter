@@ -85,7 +85,8 @@ jobs:
           # provenance/sbom attestations and OCI mediatypes both drop it (containers/podman#18904).
           provenance: false
           sbom: false
-          outputs: type=registry,oci-mediatypes=false
+          # type=registry always pushes; on PRs build only so login is not required.
+          outputs: ${{ github.event_name != 'pull_request' && 'type=registry,oci-mediatypes=false' || 'type=image,oci-mediatypes=false' }}
           annotations: |
             manifest:org.opencontainers.image.description=Prometheus exporter for Ecobee thermostats.
 
