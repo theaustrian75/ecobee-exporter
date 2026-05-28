@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM rust:1-alpine3.23 AS builder
+FROM --platform=$TARGETPLATFORM rust:1-alpine3.23 AS builder
 
 RUN apk add --no-cache musl-dev pkgconfig
 
@@ -9,9 +9,19 @@ WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
 
-RUN cargo build --locked --release --bin ecobee-exporter --bin ecobee-login
+ARG TARGETARCH
+RUN set -eu; \
+    case "${TARGETARCH}" in \
+        amd64) RUST_TARGET=x86_64-unknown-linux-musl ;; \
+        arm64) RUST_TARGET=aarch64-unknown-linux-musl ;; \
+        *) echo "unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    rustup target add "${RUST_TARGET}"; \
+    cargo build --locked --release --target "${RUST_TARGET}" --bin ecobee-exporter --bin ecobee-login; \
+    install -Dm755 "/build/target/${RUST_TARGET}/release/ecobee-exporter" /build/ecobee-exporter; \
+    install -Dm755 "/build/target/${RUST_TARGET}/release/ecobee-login" /build/ecobee-login
 
-FROM alpine:3.23
+FROM --platform=$TARGETPLATFORM alpine:3.23
 
 LABEL org.opencontainers.image.description="Prometheus exporter for Ecobee thermostats."
 
@@ -20,12 +30,12 @@ LABEL org.opencontainers.image.description="Prometheus exporter for Ecobee therm
 #   docker run -e TZ=America/New_York ...
 # Default ecobee user (uid/gid 1000). docker-entrypoint.sh recreates this account
 # at container start when UID/GID (or PUID/PGID) env vars differ.
-RUN apk add --no-cache ca-certificates tzdata su-exec \
+RUN apk add --no-cache ca-certificates tzdata su-exec wget \
     && addgroup -g 1000 -S ecobee \
     && adduser -D -H -u 1000 -G ecobee -s /sbin/nologin ecobee
 
-COPY --from=builder /build/target/release/ecobee-exporter /usr/local/bin/ecobee-exporter
-COPY --from=builder /build/target/release/ecobee-login /usr/local/bin/ecobee-login
+COPY --from=builder /build/ecobee-exporter /usr/local/bin/ecobee-exporter
+COPY --from=builder /build/ecobee-login /usr/local/bin/ecobee-login
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
