@@ -27,7 +27,7 @@ RUN apk add --no-cache ca-certificates tzdata su-exec wget \
 COPY --from=builder /build/target/release/ecobee-exporter /usr/local/bin/ecobee-exporter
 COPY --from=builder /build/target/release/ecobee-login /usr/local/bin/ecobee-login
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-COPY healthcheck.sh /usr/local/bin/healthcheck.sh
+COPY docker-healthcheck.sh /usr/local/bin/healthcheck.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/healthcheck.sh
 
 WORKDIR /var/lib/ecobee-exporter
