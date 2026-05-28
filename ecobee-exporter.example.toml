@@ -13,6 +13,12 @@ listen_addr = "0.0.0.0:9098"
 # just burns API quota.
 poll_interval = "3m"
 
+# Health probes:
+#   /healthz    always live-probes upstream connectivity
+#   /readiness  cached (default) or live via health_probe_mode
+# health_probe_mode = "live"
+# health_check_timeout = "10s"
+
 state_file = "./ecobee-exporter.state.json"
 
 # Set to true to skip Beehive entirely and serve canned data — useful

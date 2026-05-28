@@ -7,7 +7,9 @@ use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberI
 use ecobee_exporter::{
     beehive::BeehiveProvider,
     collector::Collector,
-    config::{CliOverrides, Config, ProviderKind, parse_header_pair, parse_poll_interval},
+    config::{
+        CliOverrides, Config, HealthProbeMode, ProviderKind, parse_header_pair, parse_poll_interval,
+    },
     homeassistant::HomeAssistantProvider,
     metrics::Metrics,
     provider::{FakeProvider, ThermostatProvider},
@@ -47,6 +49,14 @@ struct Cli {
     /// Where to persist refresh tokens / session state between restarts.
     #[arg(long, env = "ECOBEE_STATE_FILE")]
     state_file: Option<PathBuf>,
+
+    /// Health probe mode for `/readiness`: `cached` or `live`. `/healthz` always live-probes upstream.
+    #[arg(long, value_parser = clap::value_parser!(HealthProbeMode), env = "ECOBEE_HEALTH_PROBE_MODE")]
+    health_probe_mode: Option<HealthProbeMode>,
+
+    /// Timeout for live upstream health probes (e.g. `10s`).
+    #[arg(long, env = "ECOBEE_HEALTH_CHECK_TIMEOUT", value_parser = parse_poll_interval)]
+    health_check_timeout: Option<std::time::Duration>,
 
     #[command(flatten)]
     beehive: BeehiveCli,
@@ -133,6 +143,8 @@ impl Cli {
             homeassistant_weather_entities: self.homeassistant.weather_entities.clone(),
             tls_cert_file: self.tls.cert_file.clone(),
             tls_key_file: self.tls.key_file.clone(),
+            health_probe_mode: self.health_probe_mode,
+            health_check_timeout: self.health_check_timeout,
         })
     }
 }
@@ -161,6 +173,7 @@ async fn run() -> anyhow::Result<()> {
         demo = cfg.demo,
         provider = ?cfg.provider,
         tls = cfg.tls.is_some(),
+        health_probe_mode = ?cfg.health_probe_mode,
         "starting ecobee-exporter"
     );
 
@@ -204,7 +217,12 @@ async fn run() -> anyhow::Result<()> {
     let (shutdown_tx, shutdown_rx) = tokio::sync::broadcast::channel(1);
     let collector_task = tokio::spawn(collector.run(shutdown_rx));
 
-    let app = router(AppState { metrics });
+    let app = router(AppState {
+        metrics,
+        provider: Arc::clone(&provider),
+        health_probe_mode: cfg.health_probe_mode,
+        health_check_timeout: cfg.health_check_timeout,
+    });
 
     serve(app, cfg.listen_addr, cfg.tls.as_ref(), shutdown_signal()).await?;
 

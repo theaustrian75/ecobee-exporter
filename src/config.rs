@@ -82,6 +82,43 @@ pub struct Config {
     /// HTTPS using the PEM certificate and private key.
     #[serde(default)]
     pub tls: Option<TlsConfig>,
+
+    /// How `/readiness` decides upstream health. `cached` (default) uses the
+    /// collector's last poll; `live` fetches upstream on each probe. `/healthz`
+    /// always performs a live connectivity check.
+    #[serde(default)]
+    pub health_probe_mode: HealthProbeMode,
+
+    /// Timeout for live upstream health probes.
+    #[serde(
+        default = "Config::default_health_check_timeout",
+        with = "humantime_serde"
+    )]
+    pub health_check_timeout: Duration,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum HealthProbeMode {
+    /// Use the collector's last successful poll (default).
+    #[default]
+    Cached,
+    /// Fetch upstream on each `/readiness` request.
+    Live,
+}
+
+impl FromStr for HealthProbeMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "cached" => Ok(Self::Cached),
+            "live" => Ok(Self::Live),
+            other => Err(format!(
+                "invalid health_probe_mode {other:?}; expected `cached` or `live`"
+            )),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -177,6 +214,8 @@ pub struct CliOverrides {
     pub homeassistant_weather_entities: Vec<String>,
     pub tls_cert_file: Option<PathBuf>,
     pub tls_key_file: Option<PathBuf>,
+    pub health_probe_mode: Option<HealthProbeMode>,
+    pub health_check_timeout: Option<Duration>,
 }
 
 /// Parse a duration string such as `3m` or `90s` (same syntax as config TOML).
@@ -209,6 +248,10 @@ impl Config {
 
     fn default_state_file() -> PathBuf {
         PathBuf::from("ecobee-exporter.state.json")
+    }
+
+    fn default_health_check_timeout() -> Duration {
+        Duration::from_secs(10)
     }
 
     /// Build a `Config` from the layered sources described in the module docs.
@@ -284,6 +327,12 @@ impl Config {
             }
             self.tls = Some(tls);
         }
+        if let Some(mode) = cli.health_probe_mode {
+            self.health_probe_mode = mode;
+        }
+        if let Some(timeout) = cli.health_check_timeout {
+            self.health_check_timeout = timeout;
+        }
         self.clamp_poll_interval();
     }
 
@@ -323,6 +372,8 @@ impl Default for Config {
             beehive: BeehiveConfig::default(),
             homeassistant: HomeAssistantConfig::default(),
             tls: None,
+            health_probe_mode: HealthProbeMode::Cached,
+            health_check_timeout: Self::default_health_check_timeout(),
         }
     }
 }
@@ -441,6 +492,35 @@ key_file = "/etc/ssl/privkey.pem"
             ..Config::default()
         };
         assert!(cfg.validate_tls().is_err());
+    }
+
+    #[test]
+    fn health_probe_mode_parses_from_str() {
+        assert_eq!(
+            "cached".parse::<HealthProbeMode>().unwrap(),
+            HealthProbeMode::Cached
+        );
+        assert_eq!(
+            "live".parse::<HealthProbeMode>().unwrap(),
+            HealthProbeMode::Live
+        );
+        assert!("deep".parse::<HealthProbeMode>().is_err());
+    }
+
+    #[test]
+    fn deserializes_health_probe_settings() {
+        let cfg: Config = Figment::new()
+            .merge(Toml::string(
+                r#"
+health_probe_mode = "live"
+health_check_timeout = "15s"
+"#,
+            ))
+            .extract()
+            .expect("figment extract");
+
+        assert_eq!(cfg.health_probe_mode, HealthProbeMode::Live);
+        assert_eq!(cfg.health_check_timeout, Duration::from_secs(15));
     }
 
     fn tempdir() -> PathBuf {
