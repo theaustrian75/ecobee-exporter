@@ -41,8 +41,10 @@ jobs:
         include:
           - platform: linux/amd64
             runner: ubuntu-24.04-x86_64
+            arch: amd64
           - platform: linux/arm64
             runner: ubuntu-24.04-arm
+            arch: arm64
     permissions:
       contents: read
       packages: write
@@ -67,7 +69,7 @@ jobs:
             type=ref,event=tag
             type=sha
             type=raw,value=latest,enable={{is_default_branch}}
-          flavor: suffix=-{{arch}}
+          flavor: suffix=-${{ matrix.arch }}
           labels: |
             org.opencontainers.image.description=Prometheus exporter for Ecobee thermostats.
 
