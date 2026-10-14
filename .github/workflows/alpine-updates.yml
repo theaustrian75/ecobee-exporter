@@ -1,0 +1,136 @@
+name: Alpine updates
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+  packages: read
+  pull-requests: write
+
+concurrency:
+  group: alpine-updates-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compare published images with Alpine
+        id: check
+        run: |
+          scripts/check-alpine-updates.sh \
+            "Dockerfile=ghcr.io/${{ github.repository }}"
+
+      - name: Open pull request for the new Alpine stable
+        if: github.ref == 'refs/heads/main' && steps.check.outputs.new_branch != ''
+        env:
+          NEW_BRANCH: ${{ steps.check.outputs.new_branch }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          branch="alpine-${NEW_BRANCH}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin
+          if git show-ref --verify --quiet "refs/remotes/origin/${branch}"; then
+            git checkout -B "$branch" "origin/${branch}"
+          else
+            git checkout -b "$branch"
+          fi
+          sed -i -E \
+            -e "s|^FROM alpine:[0-9]+\\.[0-9]+(\\.[0-9]+)?|FROM alpine:${NEW_BRANCH}|" \
+            -e "s|(alpine)[0-9]+\\.[0-9]+|\\1${NEW_BRANCH}|" \
+            Dockerfile*
+          if git diff --quiet; then
+            echo "Dockerfiles already track Alpine ${NEW_BRANCH}."
+            exit 0
+          fi
+          git add Dockerfile*
+          git commit -m "Track Alpine ${NEW_BRANCH}."
+          git push --set-upstream origin "$branch"
+          open="$(gh pr list --head "$branch" --state open --json number --jq 'length')"
+          if [ "$open" = "0" ]; then
+            gh pr create \
+              --head "$branch" \
+              --base main \
+              --title "Track Alpine ${NEW_BRANCH}" \
+              --body "Alpine ${NEW_BRANCH} is the current stable branch. Package patches on the branch already in use continue to publish through the Alpine updates workflow."
+          fi
+
+      - name: Rebuild images and publish a release
+        if: github.ref == 'refs/heads/main' && steps.check.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SUMMARY: ${{ steps.check.outputs.summary }}
+        run: |
+          set -euo pipefail
+
+          next_version() {
+            local tag="$1"
+            if [[ "$tag" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+              echo "v${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.$((BASH_REMATCH[3] + 1))"
+            elif [[ "$tag" =~ ^v([0-9]+)\.([0-9]+)$ ]]; then
+              echo "v${BASH_REMATCH[1]}.$((BASH_REMATCH[2] + 1))"
+            else
+              echo "unsupported release tag: ${tag}" >&2
+              return 1
+            fi
+          }
+
+          current="$(gh release view --json tagName --jq .tagName)"
+          next="$(next_version "$current")"
+          echo "Publishing ${next} (previous ${current})"
+
+          busy="1"
+          for _ in $(seq 1 40); do
+            busy="$(gh run list --workflow=ci.yml --limit=20 --json status,headBranch --jq '[.[] | select(.headBranch=="main" and (.status=="in_progress" or .status=="queued" or .status=="pending" or .status=="waiting"))] | length')"
+            if [ "$busy" = "0" ]; then
+              break
+            fi
+            echo "Waiting for CI on main to finish (${busy} run(s))."
+            sleep 30
+          done
+          if [ "$busy" != "0" ]; then
+            echo "CI on main is still running." >&2
+            exit 1
+          fi
+
+          previous="$(gh run list --workflow=ci.yml --event=workflow_dispatch --limit=1 --json databaseId --jq '.[0].databaseId // empty')"
+          gh workflow run ci.yml --ref main -f "image_tag=${next}"
+
+          run_id=""
+          for _ in $(seq 1 30); do
+            sleep 10
+            run_id="$(gh run list --workflow=ci.yml --event=workflow_dispatch --limit=1 --json databaseId --jq '.[0].databaseId // empty')"
+            if [ -n "$run_id" ] && [ "$run_id" != "$previous" ]; then
+              break
+            fi
+            run_id=""
+          done
+          if [ -z "$run_id" ]; then
+            echo "CI did not start." >&2
+            exit 1
+          fi
+
+          echo "Watching CI run ${run_id}"
+          gh run watch "$run_id" --exit-status
+
+          gh release create "$next" \
+            --target "${GITHUB_SHA}" \
+            --title "$next" \
+            --notes "$(printf '%s\n' "Rebuild published images from the current Alpine stable branch. The image build runs \`apk upgrade\` so base-image patches are included with the packages named in the Dockerfile." "" "${SUMMARY}")"

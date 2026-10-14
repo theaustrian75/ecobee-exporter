@@ -6,6 +6,12 @@ on:
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Extra image tag to publish, such as v1.0.1
+        required: false
+        default: ""
+        type: string
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -16,6 +22,12 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
+
+      - name: Check Alpine update script
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes shellcheck
+          shellcheck scripts/check-alpine-updates.sh
 
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -69,6 +81,7 @@ jobs:
             type=ref,event=branch
             type=ref,event=tag
             type=sha
+            type=raw,value=${{ github.event.inputs.image_tag || 'none' }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.image_tag != '' }}
             type=raw,value=latest,enable={{is_default_branch}}
           flavor: suffix=-${{ matrix.arch }}
           labels: |
@@ -114,6 +127,7 @@ jobs:
             type=ref,event=branch
             type=ref,event=tag
             type=sha
+            type=raw,value=${{ github.event.inputs.image_tag || 'none' }},enable=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.image_tag != '' }}
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: Create and push multi-arch manifest
