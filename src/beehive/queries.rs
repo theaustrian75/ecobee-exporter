@@ -27,8 +27,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     model::{
-        Alert, EquipmentRuntime, ExtendedRuntime, HoldEvent, HvacMode, Program, RemoteSensor,
-        Runtime, SensorCapability, Settings, Thermostat, Weather,
+        Alert, EquipmentRuntime, EquipmentUtilization, ExtendedRuntime, HoldEvent, HvacMode,
+        Program, RemoteSensor, Runtime, SensorCapability, Settings, Thermostat, Weather,
     },
     provider::ProviderError,
 };
@@ -189,6 +189,13 @@ pub struct RawExtendedRuntime {
     pub economizer: Vec<i32>,
     #[serde(default)]
     pub ventilator: Vec<i32>,
+    /// Stage energized in each of the last three 5-minute intervals.
+    ///
+    /// Live values look like `"heatStage1On"` / `"heatOff"`. The published
+    /// docs typeset the same tokens as `"heatStage10n"` (letter O read as
+    /// zero); both shapes are accepted.
+    #[serde(default)]
+    pub hvac_mode: Vec<String>,
     #[serde(default)]
     pub dm_offset: Vec<i32>,
     #[serde(default)]
@@ -297,6 +304,8 @@ pub struct RawRuntime {
     pub raw_temperature: Option<i32>,
     #[serde(default)]
     pub desired_fan_mode: Option<String>,
+    #[serde(default)]
+    pub equipment_utilization: Option<EquipmentUtilization>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -397,6 +406,7 @@ pub fn translate(resp: &ThermostatListResponse) -> Vec<Thermostat> {
                     .and_then(|r| r.desired_fan_mode.as_deref())
                     .filter(|s| !s.is_empty())
                     .map(str::to_owned),
+                equipment_utilization: runtime.and_then(|r| r.equipment_utilization.clone()),
             };
             let settings_raw = t.settings.as_ref();
             let hvac_mode = settings_raw
@@ -428,16 +438,16 @@ pub fn translate(resp: &ThermostatListResponse) -> Vec<Thermostat> {
                 })
                 .collect();
             let weather = t.weather.as_ref().and_then(translate_weather);
-            let equipment_running = t
-                .equipment_status
-                .as_deref()
-                .map(parse_equipment_csv)
-                .unwrap_or_default();
             let program = t.program.as_ref().map(|p| Program {
                 current_climate_ref: p.current_climate_ref.clone(),
             });
             let hold = translate_hold(&t.events);
             let extended_runtime = t.extended_runtime.as_ref().map(translate_extended_runtime);
+            let equipment_running = resolve_equipment_running(
+                t.equipment_status.as_deref(),
+                runtime_model.equipment_utilization.as_ref(),
+                extended_runtime.as_ref(),
+            );
             let alerts = t
                 .alerts
                 .iter()
@@ -501,9 +511,113 @@ fn translate_extended_runtime(raw: &RawExtendedRuntime) -> ExtendedRuntime {
 
     ExtendedRuntime {
         equipment,
+        hvac_mode: three_stages(&raw.hvac_mode),
         dm_offset: three_optional(&raw.dm_offset),
         current_electricity_bill: maybe(raw.current_electricity_bill),
         projected_electricity_bill: maybe(raw.projected_electricity_bill),
+    }
+}
+
+fn three_stages(values: &[String]) -> [Option<String>; 3] {
+    let one = |idx: usize| {
+        values
+            .get(idx)
+            .map(|s| normalize_hvac_stage(s))
+            .filter(|s| !s.is_empty())
+    };
+    [one(0), one(1), one(2)]
+}
+
+/// The developer docs typeset `"1On"` as `"10n"`. Live responses use `"1On"`.
+fn normalize_hvac_stage(raw: &str) -> String {
+    raw.trim()
+        .replace("10n", "1On")
+        .replace("20n", "2On")
+        .replace("30n", "3On")
+}
+
+fn resolve_equipment_running(
+    csv: Option<&str>,
+    utilization: Option<&EquipmentUtilization>,
+    extended: Option<&ExtendedRuntime>,
+) -> Vec<String> {
+    let from_csv = csv.map(parse_equipment_csv).unwrap_or_default();
+    if !from_csv.is_empty() {
+        return from_csv;
+    }
+
+    let mut out = Vec::new();
+    if let Some(utilization) = utilization {
+        push_unique(&mut out, equipment_from_utilization(utilization));
+    }
+    if let Some(extended) = extended {
+        if let Some(stage) = extended.hvac_mode[2].as_deref()
+            && let Some(equipment) = equipment_from_hvac_stage(stage)
+        {
+            push_unique(&mut out, [equipment.to_owned()]);
+        }
+        for equipment in &extended.equipment {
+            if equipment.seconds[2] > 0 {
+                push_unique(&mut out, [map_runtime_equipment_name(&equipment.name)]);
+            }
+        }
+    }
+    out
+}
+
+fn push_unique(out: &mut Vec<String>, items: impl IntoIterator<Item = String>) {
+    for item in items {
+        if !item.is_empty() && !out.contains(&item) {
+            out.push(item);
+        }
+    }
+}
+
+fn equipment_from_utilization(utilization: &EquipmentUtilization) -> Vec<String> {
+    let mut out = Vec::new();
+    if utilization.comp_heat_capacity > 0 {
+        out.push("heatPump".to_owned());
+    }
+    if utilization.comp_cool_capacity > 0 {
+        out.push("compCool1".to_owned());
+    }
+    if utilization.aux_heat_capacity > 0 {
+        out.push("auxHeat1".to_owned());
+    }
+    if utilization.humidifier_stage > 0 {
+        out.push("humidifier".to_owned());
+    }
+    if utilization.dehumidifier_stage > 0 {
+        out.push("dehumidifier".to_owned());
+    }
+    if utilization.hrv_stage > 0 {
+        out.push("ventilator".to_owned());
+    }
+    out
+}
+
+/// Map an `extendedRuntime.hvacMode` token onto an `equipmentStatus` name.
+fn equipment_from_hvac_stage(stage: &str) -> Option<&'static str> {
+    match stage {
+        "heatStage1On" => Some("auxHeat1"),
+        "heatStage2On" => Some("auxHeat2"),
+        "heatStage3On" => Some("auxHeat3"),
+        "compressorCoolStage1On" => Some("compCool1"),
+        "compressorCoolStage2On" => Some("compCool2"),
+        "compressorHeatStage1On" => Some("heatPump"),
+        "compressorHeatStage2On" => Some("heatPump2"),
+        "economyCycle" => Some("economizer"),
+        _ => None,
+    }
+}
+
+/// Extended-runtime field names differ from `equipmentStatus` for a few outputs.
+fn map_runtime_equipment_name(name: &str) -> String {
+    match name {
+        "heatPump1" => "heatPump".to_owned(),
+        "cool1" => "compCool1".to_owned(),
+        "cool2" => "compCool2".to_owned(),
+        other => other.to_owned(),
     }
 }
 
@@ -799,5 +913,103 @@ mod tests {
         assert_eq!(domain.len(), 1);
         assert!(!domain[0].connected);
         assert_eq!(domain[0].runtime.actual_temperature, 0);
+    }
+
+    #[test]
+    fn empty_equipment_status_uses_extended_runtime_stage() {
+        let json = r#"{
+            "thermostatList": [{
+                "identifier": "1",
+                "name": "Boiler",
+                "equipmentStatus": "",
+                "runtime": {
+                    "connected": true,
+                    "actualTemperature": 673,
+                    "desiredHeat": 670,
+                    "desiredCool": 820,
+                    "equipmentUtilization": {
+                        "compHeatCapacity": 0,
+                        "compCoolCapacity": 0,
+                        "auxHeatCapacity": 0,
+                        "humidifierStage": 0,
+                        "dehumidifierStage": 0,
+                        "hrvStage": 0
+                    }
+                },
+                "extendedRuntime": {
+                    "hvacMode": ["heatStage10n", "heatOff", "heatOff"],
+                    "auxHeat1": [90, 0, 0],
+                    "fan": [0, 0, 0]
+                }
+            }],
+            "status": {"code": 0, "message": ""}
+        }"#;
+        let wire: ThermostatListResponseWire = serde_json::from_str(json).unwrap();
+        let t = &translate(&wire.into())[0];
+
+        let ext = t.extended_runtime.as_ref().unwrap();
+        assert_eq!(
+            ext.hvac_mode[0].as_deref(),
+            Some("heatStage1On"),
+            "documented heatStage10n spelling normalizes to heatStage1On"
+        );
+        assert_eq!(ext.hvac_mode[2].as_deref(), Some("heatOff"));
+        assert!(
+            t.equipment_running.is_empty(),
+            "newest bucket is heatOff, so nothing is running now"
+        );
+    }
+
+    #[test]
+    fn empty_equipment_status_derives_running_equipment() {
+        let json = r#"{
+            "thermostatList": [{
+                "identifier": "1",
+                "name": "Boiler",
+                "equipmentStatus": "",
+                "runtime": {
+                    "connected": true,
+                    "actualTemperature": 640,
+                    "desiredHeat": 680,
+                    "desiredCool": 820,
+                    "equipmentUtilization": {
+                        "auxHeatCapacity": 40,
+                        "humidifierStage": 1
+                    }
+                },
+                "extendedRuntime": {
+                    "hvacMode": ["heatOff", "heatOff", "heatStage1On"],
+                    "auxHeat1": [0, 0, 120],
+                    "fan": [0, 0, 0]
+                }
+            }],
+            "status": {"code": 0, "message": ""}
+        }"#;
+        let wire: ThermostatListResponseWire = serde_json::from_str(json).unwrap();
+        let t = &translate(&wire.into())[0];
+        assert_eq!(
+            t.equipment_running,
+            vec!["auxHeat1", "humidifier"],
+            "utilization and the newest hvacMode bucket agree on aux heat; humidifier comes from the stage field"
+        );
+    }
+
+    #[test]
+    fn equipment_status_csv_still_wins_over_runtime_buckets() {
+        let json = r#"{
+            "thermostatList": [{
+                "identifier": "1",
+                "name": "Air",
+                "equipmentStatus": "compCool1,fan",
+                "extendedRuntime": {
+                    "hvacMode": ["compressorCoolOff", "compressorCoolOff", "compressorCoolStage2On"],
+                    "cool2": [0, 0, 300]
+                }
+            }],
+            "status": {"code": 0, "message": ""}
+        }"#;
+        let wire: ThermostatListResponseWire = serde_json::from_str(json).unwrap();
+        let t = &translate(&wire.into())[0];
+        assert_eq!(t.equipment_running, vec!["compCool1", "fan"]);
     }
 }

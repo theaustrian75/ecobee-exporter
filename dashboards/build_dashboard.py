@@ -184,6 +184,13 @@ def build() -> dict:
                             format="table",
                             legendFormat="{{ equipment }}",
                         ),
+                        panel_query(
+                            "D",
+                            f'ecobee_hvac_stage{{interval="2", thermostat_name=~"{t}"}} == 1',
+                            instant=True,
+                            format="table",
+                            legendFormat="{{ stage }}",
+                        ),
                     ],
                     "queryOptions": {},
                     "transformations": [
@@ -197,6 +204,7 @@ def build() -> dict:
                                             "current_hvac_mode",
                                             "thermostat_name",
                                             "equipment",
+                                            "stage",
                                             "Value #C",
                                         ]
                                     }
@@ -206,12 +214,12 @@ def build() -> dict:
                         {
                             "group": "joinByField",
                             "kind": "Transformation",
-                            "spec": {"options": {"byField": "thermostat_name", "mode": "inner"}},
+                            "spec": {"options": {"byField": "thermostat_name", "mode": "outer"}},
                         },
                     ],
                 },
             },
-            "description": "HVAC mode, active equipment, and latest 5-minute runtime bucket (Beehive).",
+            "description": "HVAC mode, energized stage, active equipment, and latest 5-minute runtime bucket (Beehive). Idle thermostats stay visible when nothing is running.",
             "id": 2,
             "links": [],
             "title": "HVAC Status",

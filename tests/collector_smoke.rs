@@ -59,6 +59,7 @@ async fn fake_provider_round_trip_renders_billykwooten_parity_metrics() {
         "ecobee_heat_stages",
         "ecobee_cool_stages",
         "ecobee_equipment_runtime_seconds",
+        "ecobee_hvac_stage",
         "ecobee_demand_management_offset",
         "ecobee_alert_active",
     ] {
@@ -89,6 +90,11 @@ async fn fake_provider_round_trip_renders_billykwooten_parity_metrics() {
     assert!(
         rendered.contains("equipment=\"cool1\",interval=\"2\"") && rendered.contains("} 300"),
         "expected cool1 interval 2 runtime=300 in demo output"
+    );
+    assert!(
+        rendered.contains("stage=\"compressorCoolStage1On\",interval=\"2\"")
+            || rendered.contains("interval=\"2\",stage=\"compressorCoolStage1On\""),
+        "expected newest hvac stage in:\n{rendered}"
     );
     assert!(
         rendered.contains("alert_type=\"maintenance\"")

@@ -104,6 +104,7 @@ fn demo_thermostat() -> Thermostat {
             desired_dehumidity: Some(60),
             raw_temperature: Some(719),
             desired_fan_mode: Some("auto".into()),
+            equipment_utilization: None,
         },
         settings: Settings {
             hvac_mode: HvacMode::Auto,
@@ -144,6 +145,11 @@ fn demo_thermostat() -> Thermostat {
                     name: "fan".into(),
                     seconds: [0, 120, 300],
                 },
+            ],
+            hvac_mode: [
+                None,
+                Some("compressorCoolStage1On".into()),
+                Some("compressorCoolStage1On".into()),
             ],
             dm_offset: [Some(-3), Some(-2), Some(0)],
             current_electricity_bill: None,
