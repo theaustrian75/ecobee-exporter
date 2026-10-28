@@ -29,7 +29,10 @@ pub struct Thermostat {
     pub weather: Option<Weather>,
     /// Identifiers of equipment currently running (e.g. `"fan"`, `"compCool1"`).
     ///
-    /// Comes from the upstream `equipmentStatus` CSV; empty means idle.
+    /// Prefers the upstream `equipmentStatus` CSV. When that CSV is empty,
+    /// the Beehive translator fills this from `runtime.equipmentUtilization`
+    /// and the newest `extendedRuntime` bucket (`hvacMode` plus per-equipment
+    /// seconds). Empty means idle.
     #[serde(default)]
     pub equipment_running: Vec<String>,
     /// Active schedule slot, if program data was included.
@@ -64,6 +67,33 @@ pub struct Runtime {
     pub raw_temperature: Option<i32>,
     /// `"auto"`, `"on"`, or absent when HVAC is off.
     pub desired_fan_mode: Option<String>,
+    /// Live compressor/aux capacity and accessory stages.
+    ///
+    /// A value greater than zero means that output is energized. Absent on
+    /// older payloads and on the Home Assistant backend.
+    #[serde(default)]
+    pub equipment_utilization: Option<EquipmentUtilization>,
+}
+
+/// Instantaneous equipment output from `runtime.equipmentUtilization`.
+///
+/// Capacity fields are the API's raw units (zero when that output is off).
+/// Stage fields are the energized stage number, or zero when off.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EquipmentUtilization {
+    #[serde(default)]
+    pub comp_heat_capacity: i32,
+    #[serde(default)]
+    pub comp_cool_capacity: i32,
+    #[serde(default)]
+    pub aux_heat_capacity: i32,
+    #[serde(default)]
+    pub humidifier_stage: i32,
+    #[serde(default)]
+    pub dehumidifier_stage: i32,
+    #[serde(default)]
+    pub hrv_stage: i32,
 }
 
 /// User-facing settings that affect what the thermostat is currently doing.
@@ -107,6 +137,13 @@ pub struct EquipmentRuntime {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExtendedRuntime {
     pub equipment: Vec<EquipmentRuntime>,
+    /// HVAC stage energized in each of the last three 5-minute intervals.
+    ///
+    /// Index 0 = oldest, index 2 = newest. Examples: `"heatOff"`,
+    /// `"heatStage1On"`, `"compressorCoolStage1On"`. `None` when the API
+    /// omitted that bucket.
+    #[serde(default)]
+    pub hvac_mode: [Option<String>; 3],
     /// Demand-management temperature offsets in tenths of a degree.
     pub dm_offset: [Option<i32>; 3],
     pub current_electricity_bill: Option<i32>,

@@ -77,6 +77,7 @@ fn build_thermostat(
             desired_dehumidity: None,
             raw_temperature: None,
             desired_fan_mode,
+            equipment_utilization: None,
         },
         settings: Settings {
             hvac_mode,

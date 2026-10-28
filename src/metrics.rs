@@ -48,6 +48,7 @@ const EVENT_TYPE_LABELS: &[&str] = &["thermostat_id", "thermostat_name", "event_
 const EQUIPMENT_LABELS: &[&str] = &["thermostat_id", "thermostat_name", "equipment"];
 const RUNTIME_INTERVAL_LABELS: &[&str] =
     &["thermostat_id", "thermostat_name", "equipment", "interval"];
+const HVAC_STAGE_LABELS: &[&str] = &["thermostat_id", "thermostat_name", "interval", "stage"];
 const DM_OFFSET_LABELS: &[&str] = &["thermostat_id", "thermostat_name", "interval"];
 const ALERT_LABELS: &[&str] = &[
     "thermostat_id",
@@ -76,6 +77,22 @@ const KNOWN_EQUIPMENT: &[&str] = &[
     "economizer",
     "compHotWater",
     "auxHotWater",
+];
+
+/// `extendedRuntime.hvacMode` tokens. Pre-registered so a stage that just
+/// turned off drops to 0 instead of sticking at its last value.
+const KNOWN_HVAC_STAGES: &[&str] = &[
+    "heatOff",
+    "heatStage1On",
+    "heatStage2On",
+    "heatStage3On",
+    "compressorCoolOff",
+    "compressorCoolStage1On",
+    "compressorCoolStage2On",
+    "compressorHeatOff",
+    "compressorHeatStage1On",
+    "compressorHeatStage2On",
+    "economyCycle",
 ];
 
 pub struct Metrics {
@@ -126,6 +143,7 @@ pub struct Metrics {
     event_type: GaugeVec,
 
     equipment_runtime_seconds: GaugeVec,
+    hvac_stage: GaugeVec,
     demand_management_offset: GaugeVec,
     current_electricity_bill: GaugeVec,
     projected_electricity_bill: GaugeVec,
@@ -290,7 +308,7 @@ impl Metrics {
         let equipment_running = GaugeVec::new(
             Opts::new(
                 "ecobee_equipment_running",
-                "1 if the equipment is currently running, else 0; one series per known equipment per thermostat",
+                "1 if the equipment is currently running, else 0. Beehive uses equipmentStatus when it lists equipment, otherwise runtime.equipmentUtilization and the newest extendedRuntime bucket",
             ),
             EQUIPMENT_LABELS,
         )?;
@@ -415,6 +433,14 @@ impl Metrics {
             RUNTIME_LABELS,
         )?;
 
+        let hvac_stage = GaugeVec::new(
+            Opts::new(
+                "ecobee_hvac_stage",
+                "1 if this HVAC stage was energized during the 5-minute interval (0=oldest, 2=newest). From extendedRuntime.hvacMode, for example heatOff or heatStage1On",
+            ),
+            HVAC_STAGE_LABELS,
+        )?;
+
         let alert_active = GaugeVec::new(
             Opts::new(
                 "ecobee_alert_active",
@@ -461,6 +487,7 @@ impl Metrics {
         registry.register(Box::new(hold_cool_temp.clone()))?;
         registry.register(Box::new(event_type.clone()))?;
         registry.register(Box::new(equipment_runtime_seconds.clone()))?;
+        registry.register(Box::new(hvac_stage.clone()))?;
         registry.register(Box::new(demand_management_offset.clone()))?;
         registry.register(Box::new(current_electricity_bill.clone()))?;
         registry.register(Box::new(projected_electricity_bill.clone()))?;
@@ -507,6 +534,7 @@ impl Metrics {
             hold_cool_temp,
             event_type,
             equipment_runtime_seconds,
+            hvac_stage,
             demand_management_offset,
             current_electricity_bill,
             projected_electricity_bill,
@@ -724,6 +752,24 @@ impl Metrics {
                 self.equipment_runtime_seconds
                     .with_label_values(&[id, name, eq.name.as_str(), interval.as_str()])
                     .set(f64::from(*seconds));
+            }
+        }
+
+        for (idx, stage) in ext.hvac_mode.iter().enumerate() {
+            let Some(active) = stage.as_deref() else {
+                continue;
+            };
+            let interval = idx.to_string();
+            for known in KNOWN_HVAC_STAGES {
+                let value = if *known == active { 1.0 } else { 0.0 };
+                self.hvac_stage
+                    .with_label_values(&[id, name, interval.as_str(), known])
+                    .set(value);
+            }
+            if !KNOWN_HVAC_STAGES.contains(&active) {
+                self.hvac_stage
+                    .with_label_values(&[id, name, interval.as_str(), active])
+                    .set(1.0);
             }
         }
 

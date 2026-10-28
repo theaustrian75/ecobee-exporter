@@ -358,7 +358,8 @@ Beehive reads the thermostat's paired weather station. Home Assistant maps linke
 
 | Metric                     | Labels                                          | Beehive | Home Assistant | Description                                                                                                                                                  |
 | -------------------------- | ----------------------------------------------- | ------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `ecobee_equipment_running` | `thermostat_id`, `thermostat_name`, `equipment` | Yes     | Partial        | Replaces legacy `ecobee_last_interval_energized_state`. Beehive: full `equipmentStatus` list. Home Assistant: ecobee cloud `equipment_running` CSV or `hvac_action` map. |
+| `ecobee_equipment_running` | `thermostat_id`, `thermostat_name`, `equipment` | Yes     | Partial        | Replaces legacy `ecobee_last_interval_energized_state`. Beehive: `equipmentStatus` when it lists equipment; otherwise `runtime.equipmentUtilization` and the newest `extendedRuntime` bucket. Home Assistant: ecobee cloud `equipment_running` CSV or `hvac_action` map. |
+| `ecobee_hvac_stage`        | `thermostat_id`, `thermostat_name`, `interval`, `stage` | Yes     | No             | `1` when that stage was energized in the 5-minute bucket (`interval="2"` = newest). Stages come from `extendedRuntime.hvacMode`, for example `heatOff`, `heatStage1On`, `compressorCoolStage1On`. |
 
 
 Known equipment identifiers: `heatPump`, `heatPump2`, `heatPump3`, `compCool1`, `compCool2`, `auxHeat1`, `auxHeat2`, `auxHeat3`, `fan`, `humidifier`, `dehumidifier`, `ventilator`, `economizer`, `compHotWater`, `auxHotWater`.

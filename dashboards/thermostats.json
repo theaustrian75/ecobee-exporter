@@ -100,6 +100,30 @@
                   },
                   "refId": "C"
                 }
+              },
+              {
+                "kind": "PanelQuery",
+                "spec": {
+                  "hidden": false,
+                  "query": {
+                    "datasource": {
+                      "type": "prometheus",
+                      "uid": "${datasource}"
+                    },
+                    "group": "prometheus",
+                    "kind": "DataQuery",
+                    "spec": {
+                      "editorMode": "code",
+                      "expr": "ecobee_hvac_stage{interval=\"2\", thermostat_name=~\"$ecobee_thermostat_name\"} == 1",
+                      "legendFormat": "{{ stage }}",
+                      "range": false,
+                      "instant": true,
+                      "format": "table"
+                    },
+                    "version": "v0"
+                  },
+                  "refId": "D"
+                }
               }
             ],
             "queryOptions": {},
@@ -114,6 +138,7 @@
                         "current_hvac_mode",
                         "thermostat_name",
                         "equipment",
+                        "stage",
                         "Value #C"
                       ]
                     }
@@ -126,14 +151,14 @@
                 "spec": {
                   "options": {
                     "byField": "thermostat_name",
-                    "mode": "inner"
+                    "mode": "outer"
                   }
                 }
               }
             ]
           }
         },
-        "description": "HVAC mode, active equipment, and latest 5-minute runtime bucket (Beehive).",
+        "description": "HVAC mode, energized stage, active equipment, and latest 5-minute runtime bucket (Beehive). Idle thermostats stay visible when nothing is running.",
         "id": 2,
         "links": [],
         "title": "HVAC Status",
