@@ -138,8 +138,9 @@ jobs:
           jq -cr '.tags[]' <<< "$DOCKER_METADATA_OUTPUT_JSON" | while read -r tag; do
             repo="${tag%%:*}"
             name="${tag##*:}"
+            # buildx 0.39 rejects index annotations on Docker manifest lists.
+            # oci-mediatypes=false stays so Podman can read HEALTHCHECK.
             docker buildx imagetools create \
-              --annotation "index:org.opencontainers.image.description=Prometheus exporter for Ecobee thermostats." \
               -t "$tag" \
               "${repo}:${name}-amd64" \
               "${repo}:${name}-arm64"
